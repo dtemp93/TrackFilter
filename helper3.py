@@ -290,21 +290,22 @@ def alpha_rnn(self, inputs, cell, state=None, u=None, buffer=None, reuse=None, i
     return alpha, state, u, buffer
 
 
-def weighted_mape_tf(y_true, y_pred, weight, tot=1.):
-    mult = 1
-    # tot = tf.reduce_sum(tf.abs(y_true))
-    # tot = tf.clip_by_value(tot, clip_value_min=(0.001/6378137), clip_value_max=tot)
-    num = tf.reduce_sum(tf.square(tf.subtract(y_true * mult, y_pred * mult)) * math_ops.to_double(weight))
-    # num = tf.clip_by_value(num, clip_value_min=0., clip_value_max=1000)
-    den = tf.reduce_mean(tf.square(y_true * mult))
-    den = tf.clip_by_value(den, clip_value_min=1., clip_value_max=1e9)
-    # wmape = tf.realdiv(tf.reduce_sum(tf.abs(tf.subtract(y_true, y_pred)) * math_ops.to_float(weight)), tot)*100
+def weighted_mape_tf(y_true, y_pred, weight, tot=1., name=''):
+    with tf.variable_scope('weighted_mape'):
+        mult = 1
+        # tot = tf.reduce_sum(tf.abs(y_true))
+        # tot = tf.clip_by_value(tot, clip_value_min=(0.001/6378137), clip_value_max=tot)
+        num = tf.reduce_sum(tf.square(tf.subtract(y_true * mult, y_pred * mult)) * math_ops.to_double(weight), name=name+'sum')
+        # num = tf.clip_by_value(num, clip_value_min=0., clip_value_max=1000)
+        den = tf.reduce_mean(tf.square(y_true * mult), name=name+'mean')
+        den = tf.clip_by_value(den, clip_value_min=1., clip_value_max=1e9, name=name+'clip')
+        # wmape = tf.realdiv(tf.reduce_sum(tf.abs(tf.subtract(y_true, y_pred)) * math_ops.to_float(weight)), tot)*100
 
-    # wmape = tf.realdiv(num, den) * 100
+        # wmape = tf.realdiv(num, den) * 100
 
-    wmape = num / tot
+        wmape = num / tot
 
-    return wmape
+        return wmape
 
 
 def msec(y_true, y_pred, weight, tot=1):

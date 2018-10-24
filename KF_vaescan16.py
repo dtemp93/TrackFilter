@@ -55,10 +55,9 @@ class Filter(object):
         # self.test_dir = self.root + '/AdvancedBroad_preprocessed/Test/'
 
         self.global_step = tf.Variable(initial_value=0, name="global_step", trainable=False, collections=[tf.GraphKeys.GLOBAL_STEP, tf.GraphKeys.GLOBAL_VARIABLES], dtype=tf.int32)
-        self.batch_step = tf.Variable(0.0, trainable=False)
-        self.drop_rate = tf.Variable(0.5, trainable=False, dtype=tf.float64)
-        self.learning_rate_inp = tf.Variable(0.0, trainable=False, dtype=tf.float64)
-        self.deterministic = tf.constant(False)
+        # self.batch_step = tf.Variable(0.0, trainable=False)
+
+        # self.deterministic = tf.constant(False)
 
         self.idxi = [0, 3, 6, 9, 1, 4, 7, 10, 2, 5, 8, 11]
         self.idxo = [0, 4, 8, 1, 5, 9, 2, 6, 10, 3, 7, 11]
@@ -112,573 +111,607 @@ class Filter(object):
 
     def alpha(self, int_time, dt, pstate, meas_rae, cov_est, Q_est, R_est, LLA, sensor_onehot, state1=None, state2=None, state3=None):
 
-        lat = LLA[:, 0, tf.newaxis]
-        lon = LLA[:, 1, tf.newaxis]
-        # alt = LLA[:, 2, tf.newaxis]
+        with tf.variable_scope('alpha'):
+            lat = LLA[:, 0, tf.newaxis]
+            lon = LLA[:, 1, tf.newaxis]
+            # alt = LLA[:, 2, tf.newaxis]
 
-        R = meas_rae[:, 0, tf.newaxis]
-        A = meas_rae[:, 1, tf.newaxis]
-        E = meas_rae[:, 2, tf.newaxis]
+            R = meas_rae[:, 0, tf.newaxis]
+            A = meas_rae[:, 1, tf.newaxis]
+            E = meas_rae[:, 2, tf.newaxis]
 
-        east = (R * tf.sin(A) * tf.cos(E))  # * ((tf.exp(tf.negative(tf.pow(sa, 2) / 2)) * tf.exp(tf.negative(tf.pow(se, 2) / 2))))
-        north = (R * tf.cos(E) * tf.cos(A))  # * ((tf.exp(tf.negative(tf.pow(sa, 2) / 2)) * tf.exp(tf.negative(tf.pow(se, 2) / 2))))
-        up = (R * tf.sin(E))  # * ((tf.exp(tf.negative(tf.pow(se, 2) / 2))))
+            east = (R * tf.sin(A) * tf.cos(E))  # * ((tf.exp(tf.negative(tf.pow(sa, 2) / 2)) * tf.exp(tf.negative(tf.pow(se, 2) / 2))))
+            north = (R * tf.cos(E) * tf.cos(A))  # * ((tf.exp(tf.negative(tf.pow(sa, 2) / 2)) * tf.exp(tf.negative(tf.pow(se, 2) / 2))))
+            up = (R * tf.sin(E))  # * ((tf.exp(tf.negative(tf.pow(se, 2) / 2))))
 
-        cosPhi = tf.cos(lat)
-        sinPhi = tf.sin(lat)
-        cosLambda = tf.cos(lon)
-        sinLambda = tf.sin(lon)
+            cosPhi = tf.cos(lat)
+            sinPhi = tf.sin(lat)
+            cosLambda = tf.cos(lon)
+            sinLambda = tf.sin(lon)
 
-        tv = cosPhi * up - sinPhi * north
-        wv = sinPhi * up + cosPhi * north
-        uv = cosLambda * tv - sinLambda * east
-        vv = sinLambda * tv + cosLambda * east
+            tv = cosPhi * up - sinPhi * north
+            wv = sinPhi * up + cosPhi * north
+            uv = cosLambda * tv - sinLambda * east
+            vv = sinLambda * tv + cosLambda * east
 
-        meas_uvw1 = tf.concat([uv, vv, wv], axis=1)
+            meas_uvw1 = tf.concat([uv, vv, wv], axis=1)
 
-        _, At, _, _ = get_QP(dt, self.om, self.zm, self.I_3z, self.I_4z, self.zb,
-                             dimension=int(self.num_state / 3),
-                             sjix=self.om[:, :, 0] * 1 ** 2,
-                             sjiy=self.om[:, :, 0] * 1 ** 2,
-                             sjiz=self.om[:, :, 0] * 1 ** 2,
-                             aji=self.om[:, :, 0] * 1.0)
+            _, At, _, _ = get_QP(dt, self.om, self.zm, self.I_3z, self.I_4z, self.zb,
+                                 dimension=int(self.num_state / 3),
+                                 sjix=self.om[:, :, 0] * 1 ** 2,
+                                 sjiy=self.om[:, :, 0] * 1 ** 2,
+                                 sjiz=self.om[:, :, 0] * 1 ** 2,
+                                 aji=self.om[:, :, 0] * 1.0)
 
-        prop_state = tf.matmul(At, pstate[:, :, tf.newaxis])
-        pre_residual = meas_uvw1[:, :, tf.newaxis] - tf.matmul(self.meas_mat, prop_state)
+            prop_state = tf.matmul(At, pstate[:, :, tf.newaxis])
+            pre_residual = meas_uvw1[:, :, tf.newaxis] - tf.matmul(self.meas_mat, prop_state)
 
-        cov_diag = tf.matrix_diag_part(cov_est)
-        Q_diag = tf.matrix_diag_part(Q_est)
-        R_diag = tf.matrix_diag_part(R_est)
+            cov_diag = tf.matrix_diag_part(cov_est)
+            Q_diag = tf.matrix_diag_part(Q_est)
+            R_diag = tf.matrix_diag_part(R_est)
 
-        cov_diag_n = cov_diag / tf.ones_like(cov_diag) * 100
-        Q_diag_n = Q_diag / tf.ones_like(Q_diag) * 100
-        R_diag_n = R_diag / tf.ones_like(R_diag) * 100
-        pre_res_n = pre_residual[:, :, 0] / tf.ones_like(pre_residual[:, :, 0]) * 100
+            cov_diag_n = cov_diag / tf.ones_like(cov_diag) * 100
+            Q_diag_n = Q_diag / tf.ones_like(Q_diag) * 100
+            R_diag_n = R_diag / tf.ones_like(R_diag) * 100
+            pre_res_n = pre_residual[:, :, 0] / tf.ones_like(pre_residual[:, :, 0]) * 100
 
-        rnn_inp = tf.concat([pre_res_n, cov_diag_n, Q_diag_n, R_diag_n, sensor_onehot], axis=1)
+            rnn_inp = tf.concat([pre_res_n, cov_diag_n, Q_diag_n, R_diag_n, sensor_onehot], axis=1)
 
-        rnn_inpa1 = FCL(rnn_inp, rnn_inp.shape[1].value, activation_fn=tf.nn.elu, scope='r_cov/rnn_inp1', reuse=tf.AUTO_REUSE)
-        rnn_inpa = FCL(rnn_inpa1, self.F_hidden, activation_fn=tf.nn.elu, scope='r_cov/rnn_inp2', reuse=tf.AUTO_REUSE)
+            rnn_inpa1 = FCL(rnn_inp, rnn_inp.shape[1].value, activation_fn=tf.nn.elu, scope='r_cov/rnn_inp1', reuse=tf.AUTO_REUSE)
+            rnn_inpa = FCL(rnn_inpa1, self.F_hidden, activation_fn=tf.nn.elu, scope='r_cov/rnn_inp2', reuse=tf.AUTO_REUSE)
 
-        rnn_inpb1 = FCL(rnn_inp, rnn_inp.shape[1].value, activation_fn=tf.nn.elu, scope='q_cov/rnn_inp1', reuse=tf.AUTO_REUSE)
-        rnn_inpb = FCL(rnn_inpb1, self.F_hidden, activation_fn=tf.nn.elu, scope='q_cov/rnn_inp2', reuse=tf.AUTO_REUSE)
+            rnn_inpb1 = FCL(rnn_inp, rnn_inp.shape[1].value, activation_fn=tf.nn.elu, scope='q_cov/rnn_inp1', reuse=tf.AUTO_REUSE)
+            rnn_inpb = FCL(rnn_inpb1, self.F_hidden, activation_fn=tf.nn.elu, scope='q_cov/rnn_inp2', reuse=tf.AUTO_REUSE)
 
-        rnn_inpa = tfc.layers.dropout(rnn_inpa, keep_prob=self.drop_rate, is_training=self.is_training, scope='r_cov/dropout_inputs')
-        rnn_inpb = tfc.layers.dropout(rnn_inpb, keep_prob=self.drop_rate, is_training=self.is_training, scope='q_cov/dropout_inputs')
+            rnn_inpa = tfc.layers.dropout(rnn_inpa, keep_prob=self.drop_rate, is_training=self.is_training, scope='r_cov/dropout_inputs')
+            rnn_inpb = tfc.layers.dropout(rnn_inpb, keep_prob=self.drop_rate, is_training=self.is_training, scope='q_cov/dropout_inputs')
 
-        with tf.variable_scope('Source_Track_Forward/r_cov', reuse=tf.AUTO_REUSE):
-            (outa, state1) = self.source_fwf((int_time, rnn_inpa), state=state1)
+            with tf.variable_scope('Source_Track_Forward/r_cov', reuse=tf.AUTO_REUSE):
+                (outa, state1) = self.source_fwf((int_time, rnn_inpa), state=state1)
 
-        with tf.variable_scope('Source_Track_Forward2/q_cov', reuse=tf.AUTO_REUSE):
-            (outb, state2) = self.source_fwf2((int_time, rnn_inpb), state=state2)
+            with tf.variable_scope('Source_Track_Forward2/q_cov', reuse=tf.AUTO_REUSE):
+                (outb, state2) = self.source_fwf2((int_time, rnn_inpb), state=state2)
 
-        rm0 = FCL(tf.concat([outa], axis=1), 3, activation_fn=None, scope='r_cov/1', reuse=tf.AUTO_REUSE)
-        rm1 = FCL(rm0, 3, activation_fn=None, scope='r_cov/2', reuse=tf.AUTO_REUSE)
-        asr = FCL(rm1[:, 0, tf.newaxis], self.num_mixtures, activation_fn=tf.nn.softmax, scope='r_cov/alphar', reuse=tf.AUTO_REUSE)
-        asa = FCL(rm1[:, 1, tf.newaxis], self.num_mixtures, activation_fn=tf.nn.softmax, scope='r_cov/alphaa', reuse=tf.AUTO_REUSE)
-        ase = FCL(rm1[:, 2, tf.newaxis], self.num_mixtures, activation_fn=tf.nn.softmax, scope='r_cov/alphae', reuse=tf.AUTO_REUSE)
+            rm0 = FCL(tf.concat([outa], axis=1), self.F_hidden, activation_fn=None, scope='r_cov/1', reuse=tf.AUTO_REUSE)
+            # rm1 = FCL(rm0, 6, activation_fn=None, scope='r_cov/2', reuse=tf.AUTO_REUSE)
+            # d_mult = (tf.nn.sigmoid(rm1[:, -1:], 'r_cov/d_mult') * 50) + tf.ones_like(rm1[:, -1:]) * 1
+            # rd = tril_with_diag_softplus_and_shift(rm1[:, :6], diag_shift=0.01, diag_mult=None, name='r_cov/tril')
+            asr = FCL(rm0, self.num_mixtures, activation_fn=tf.nn.softmax, scope='r_cov/alphar', reuse=tf.AUTO_REUSE)
+            # asa = FCL(rm0[:, 12:24], self.num_mixtures, activation_fn=tf.nn.softmax, scope='r_cov/alphaa', reuse=tf.AUTO_REUSE)
+            # ase = FCL(rm0[:, 24:], self.num_mixtures, activation_fn=tf.nn.softmax, scope='r_cov/alphae', reuse=tf.AUTO_REUSE)
 
-        sr_list = list()
-        sa_list = list()
-        se_list = list()
-        srl = [0.01, 1, 50, 250, 500]
-        sal = [1e-6, 2.5e-6, 5e-6, 1e-5, 2.5e-5]
-        sel = [0.0001, 0.0005, 0.001, 0.005, 0.01]
+            sr_list = list()
+            sa_list = list()
+            se_list = list()
+            srl = [0.0001, 0.01, 10, 250, 500]
+            sal = [1e-7, 1e-6, 5e-6, 1e-5, 2.5e-5]
+            sel = [0.00001, 0.00005, 0.0001, 0.0005, 0.001]
 
-        for ppp in range(self.num_mixtures):
-            sr_list.append(tf.ones([1, 1], dtype=self.vdtype) * srl[ppp])
-            sa_list.append(tf.ones([1, 1], dtype=self.vdtype) * sal[ppp])
-            se_list.append(tf.ones([1, 1], dtype=self.vdtype) * sel[ppp])
+            srl = [0.01, 1, 10, 100, 500]
+            sal = [1e-7, 1e-6, 5e-6, 1e-5, 2.5e-5]
+            sel = [0.000001, 0.000005, 0.00001, 0.00005, 0.0001]
 
-        sr_vals = tf.squeeze(tf.stack(sr_list, axis=1), 0)
-        sa_vals = tf.squeeze(tf.stack(sa_list, axis=1), 0)
-        se_vals = tf.squeeze(tf.stack(se_list, axis=1), 0)
+            for ppp in range(self.num_mixtures):
+                sr_list.append(tf.ones([1, 1], dtype=self.vdtype) * srl[ppp])
+                sa_list.append(tf.ones([1, 1], dtype=self.vdtype) * sal[ppp])
+                se_list.append(tf.ones([1, 1], dtype=self.vdtype) * sel[ppp])
 
-        # sr = FCL(rm1[:, 0, tf.newaxis], 1, activation_fn=tf.nn.sigmoid, scope='sr', reuse=tf.AUTO_REUSE) * 200 + tf.ones_like(rm1[:, 0, tf.newaxis]) * 0.1
-        # sa = FCL(rm1[:, 1, tf.newaxis], 1, activation_fn=tf.nn.sigmoid, scope='sa', reuse=tf.AUTO_REUSE) * 1e-1 + tf.ones_like(rm1[:, 0, tf.newaxis]) * 5e-4
-        # se = FCL(rm1[:, 2, tf.newaxis], 1, activation_fn=tf.nn.sigmoid, scope='sz', reuse=tf.AUTO_REUSE) * 0.5 + tf.ones_like(rm1[:, 0, tf.newaxis]) * 1e-3
+            sr_vals = tf.squeeze(tf.stack(sr_list, axis=1), 0)
+            sa_vals = tf.squeeze(tf.stack(sa_list, axis=1), 0)
+            se_vals = tf.squeeze(tf.stack(se_list, axis=1), 0)
 
-        sr = tf.matmul(asr, tf.sqrt(sr_vals))
-        sa = tf.matmul(asa, tf.sqrt(sa_vals))
-        se = tf.matmul(ase, tf.sqrt(se_vals))
+            # sr = FCL(rm1[:, 0, tf.newaxis], 1, activation_fn=tf.nn.sigmoid, scope='sr', reuse=tf.AUTO_REUSE) * 200 + tf.ones_like(rm1[:, 0, tf.newaxis]) * 0.1
+            # sa = FCL(rm1[:, 1, tf.newaxis], 1, activation_fn=tf.nn.sigmoid, scope='sa', reuse=tf.AUTO_REUSE) * 1e-1 + tf.ones_like(rm1[:, 0, tf.newaxis]) * 5e-4
+            # se = FCL(rm1[:, 2, tf.newaxis], 1, activation_fn=tf.nn.sigmoid, scope='sz', reuse=tf.AUTO_REUSE) * 0.5 + tf.ones_like(rm1[:, 0, tf.newaxis]) * 1e-3
 
-        # rd = tf.concat([tf.sqrt(sr), tf.sqrt(sa)*tf.sqrt(R), tf.sqrt(se)*tf.sqrt(R)], axis=1)
-        rd = tf.concat([sr, sa * tf.sqrt(R), se * tf.sqrt(R)], axis=1)
+            sr = tf.matmul(asr, tf.sqrt(sr_vals))
+            sa = tf.matmul(asr, tf.sqrt(sa_vals))
+            se = tf.matmul(asr, tf.sqrt(se_vals))
 
-        # rd = tf.matrix_set_diag(self.I_3z, r_diag)
+            rd = tf.concat([sr, sa, se], axis=1)
 
-        # eastn = (sr * tf.sin(sa) * tf.cos(se))  # * ((tf.exp(tf.negative(tf.pow(sa, 2) / 2)) * tf.exp(tf.negative(tf.pow(se, 2) / 2))))
-        # northn = (sr * tf.cos(se) * tf.cos(sa))  # * ((tf.exp(tf.negative(tf.pow(sa, 2) / 2)) * tf.exp(tf.negative(tf.pow(se, 2) / 2))))
-        # upn = (sr * tf.sin(se))  # * ((tf.exp(tf.negative(tf.pow(se, 2) / 2))))
-        #
-        # enu_noise = tf.concat([eastn, northn, upn], axis=1)
-        #
-        # tvn = cosPhi * upn - sinPhi * northn
-        # wvn = sinPhi * upn + cosPhi * northn
-        # uvn = cosLambda * tvn - sinLambda * eastn
-        # vvn = sinLambda * tvn + cosLambda * eastn
-        #
-        # meas_uvw_noise = tf.concat([uvn, vvn, wvn], axis=1)
-        #
-        # meas_uvw = meas_uvw1 + meas_uvw_noise
-        #
-        # uvw_diff = meas_uvw1 - meas_uvw
-        # uvw_cov = tf.matmul(uvw_diff[:, :, tf.newaxis], uvw_diff[:, :, tf.newaxis], transpose_b=True)
-        #
-        # uvw_diag = tf.matrix_diag_part(uvw_cov)
-        # uvw_diag = tf.where(uvw_diag < 1, tf.ones_like(uvw_diag), uvw_diag)
+            # rd = tf.matrix_set_diag(self.I_3z, r_diag)
 
-        # rdist = tfd.MultivariateNormalTriL(loc=None, scale_tril=rd)
-        rdist = tfd.MultivariateNormalDiag(loc=None, scale_diag=rd)
-        Rt = rdist.covariance()
+            # eastn = (sr * tf.sin(sa) * tf.cos(se))  # * ((tf.exp(tf.negative(tf.pow(sa, 2) / 2)) * tf.exp(tf.negative(tf.pow(se, 2) / 2))))
+            # northn = (sr * tf.cos(se) * tf.cos(sa))  # * ((tf.exp(tf.negative(tf.pow(sa, 2) / 2)) * tf.exp(tf.negative(tf.pow(se, 2) / 2))))
+            # upn = (sr * tf.sin(se))  # * ((tf.exp(tf.negative(tf.pow(se, 2) / 2))))
+            #
+            # enu_noise = tf.concat([eastn, northn, upn], axis=1)
+            #
+            # tvn = cosPhi * upn - sinPhi * northn
+            # wvn = sinPhi * upn + cosPhi * northn
+            # uvn = cosLambda * tvn - sinLambda * eastn
+            # vvn = sinLambda * tvn + cosLambda * eastn
+            #
+            # meas_uvw_noise = tf.concat([uvn, vvn, wvn], axis=1)
+            #
+            # meas_uvw = meas_uvw1 + meas_uvw_noise
+            #
+            # uvw_diff = meas_uvw1 - meas_uvw
+            # uvw_cov = tf.matmul(uvw_diff[:, :, tf.newaxis], uvw_diff[:, :, tf.newaxis], transpose_b=True)
+            #
+            # uvw_diag = tf.matrix_diag_part(uvw_cov)
+            # uvw_diag = tf.where(uvw_diag < 1, tf.ones_like(uvw_diag), uvw_diag)
 
-        meas_uvw = meas_uvw1
+            # rdist = tfd.MultivariateNormalTriL(loc=None, scale_tril=rd)
+            rdist = tfd.MultivariateNormalDiag(loc=None, scale_diag=rd)
+            Rt = rdist.covariance()
 
-        # alpha0 = FCL(out[:, hp:], out[:, hp:].shape[1].value, activation_fn=None, scope='alpha0', reuse=tf.AUTO_REUSE)
-        # alpha1 = FCL(alpha0, alpha0.shape[1].value, activation_fn=None, scope='alpha1', reuse=tf.AUTO_REUSE)
-        # alpha = FCL(alpha1, self.num_mixtures, activation_fn=tf.nn.softmax, scope='alpha', reuse=tf.AUTO_REUSE)
+            meas_uvw = meas_uvw1
 
-        # u0 = FCL(out[:, hp:hp+6], 3, activation_fn=None, scope='u/1', reuse=tf.AUTO_REUSE)
-        # ul = FCL(u0, 3, activation_fn=None, scope='u/2', reuse=tf.AUTO_REUSE)
-        # u = FCL(ul, 3, activation_fn=None, scope='u/3', reuse=tf.AUTO_REUSE)
+            # alpha0 = FCL(out[:, hp:], out[:, hp:].shape[1].value, activation_fn=None, scope='alpha0', reuse=tf.AUTO_REUSE)
+            # alpha1 = FCL(alpha0, alpha0.shape[1].value, activation_fn=None, scope='alpha1', reuse=tf.AUTO_REUSE)
+            # alpha = FCL(alpha1, self.num_mixtures, activation_fn=tf.nn.softmax, scope='alpha', reuse=tf.AUTO_REUSE)
 
-        u = tf.zeros([self.batch_size, 3], self.vdtype)
+            # u0 = FCL(out[:, hp:hp+6], 3, activation_fn=None, scope='u/1', reuse=tf.AUTO_REUSE)
+            # ul = FCL(u0, 3, activation_fn=None, scope='u/2', reuse=tf.AUTO_REUSE)
+            # u = FCL(ul, 3, activation_fn=None, scope='u/3', reuse=tf.AUTO_REUSE)
 
-        qm0 = FCL(tf.concat([outb], axis=1), 3, activation_fn=None, scope='q_cov/1', reuse=tf.AUTO_REUSE)
-        qm1 = FCL(qm0, 3, activation_fn=None, scope='q_cov/2', reuse=tf.AUTO_REUSE)
-        qmx = FCL(qm1[:, 0, tf.newaxis], self.num_mixtures, activation_fn=tf.nn.softmax, scope='q_cov/x', reuse=tf.AUTO_REUSE)
-        qmy = FCL(qm1[:, 1, tf.newaxis], self.num_mixtures, activation_fn=tf.nn.softmax, scope='q_cov/y', reuse=tf.AUTO_REUSE)
-        qmz = FCL(qm1[:, 2, tf.newaxis], self.num_mixtures, activation_fn=tf.nn.softmax, scope='q_cov/z', reuse=tf.AUTO_REUSE)
+            u = tf.zeros([self.batch_size, 3], self.vdtype)
 
-        # alphas = tf.stop_gradient(tf.concat([asr, asa, ase, qmx, qmy, qmz], axis=1))
+            qm0 = FCL(tf.concat([outb], axis=1), 36, activation_fn=None, scope='q_cov/1', reuse=tf.AUTO_REUSE)
+            # qm1 = FCL(qm0, 3, activation_fn=None, scope='q_cov/2', reuse=tf.AUTO_REUSE)
+            qmx = FCL(qm0[:, :12], self.num_mixtures, activation_fn=tf.nn.softmax, scope='q_cov/x', reuse=tf.AUTO_REUSE)
+            qmy = FCL(qm0[:, 12:24], self.num_mixtures, activation_fn=tf.nn.softmax, scope='q_cov/y', reuse=tf.AUTO_REUSE)
+            qmz = FCL(qm0[:, 24:], self.num_mixtures, activation_fn=tf.nn.softmax, scope='q_cov/z', reuse=tf.AUTO_REUSE)
 
-        sjx_l = list()
-        sjy_l = list()
-        sjz_l = list()
-        sjxl = [0.1, 1, 5, 50, 100]
-        sjyl = [0.1, 1, 5, 50, 100]
-        sjzl = [0.1, 1, 5, 50, 100]
+            # alphas = tf.stop_gradient(tf.concat([asr, asa, ase, qmx, qmy, qmz], axis=1))
 
-        for ppp in range(self.num_mixtures):
-            sjx_l.append(tf.ones([1, 1], dtype=self.vdtype) * sjxl[ppp])
-            sjy_l.append(tf.ones([1, 1], dtype=self.vdtype) * sjyl[ppp])
-            sjz_l.append(tf.ones([1, 1], dtype=self.vdtype) * sjzl[ppp])
+            sjx_l = list()
+            sjy_l = list()
+            sjz_l = list()
+            sjxl = [0.1, 1, 25, 50, 100]
+            sjyl = [0.1, 1, 25, 50, 100]
+            sjzl = [0.1, 1, 25, 50, 100]
 
-        sjx_vals = tf.squeeze(tf.stack(sjx_l, axis=1), 0)
-        sjy_vals = tf.squeeze(tf.stack(sjy_l, axis=1), 0)
-        sjz_vals = tf.squeeze(tf.stack(sjz_l, axis=1), 0)
+            for ppp in range(self.num_mixtures):
+                sjx_l.append(tf.ones([1, 1], dtype=self.vdtype) * sjxl[ppp])
+                sjy_l.append(tf.ones([1, 1], dtype=self.vdtype) * sjyl[ppp])
+                sjz_l.append(tf.ones([1, 1], dtype=self.vdtype) * sjzl[ppp])
 
-        sjx = tf.matmul(qmx, sjx_vals)
-        sjy = tf.matmul(qmy, sjy_vals)
-        sjz = tf.matmul(qmz, sjz_vals)
+            sjx_vals = tf.squeeze(tf.stack(sjx_l, axis=1), 0)
+            sjy_vals = tf.squeeze(tf.stack(sjy_l, axis=1), 0)
+            sjz_vals = tf.squeeze(tf.stack(sjz_l, axis=1), 0)
 
-        Qt, At, Bt, _ = get_QP(dt, self.om, self.zm, self.I_3z, self.I_4z, self.zb,
-                               dimension=int(self.num_state / 3),
-                               sjix=self.om[:, :, 0] * sjx ** 2,
-                               sjiy=self.om[:, :, 0] * sjy ** 2,
-                               sjiz=self.om[:, :, 0] * sjz ** 2,
-                               aji=self.om[:, :, 0] * 1.0)
+            sjx = tf.matmul(qmx, sjx_vals)
+            sjy = tf.matmul(qmy, sjy_vals)
+            sjz = tf.matmul(qmz, sjz_vals)
 
-        qdist = tfd.MultivariateNormalTriL(loc=None, scale_tril=tf.cholesky(Qt))
-        Qt = qdist.covariance()
+            Qt, At, Bt, _ = get_QP(dt, self.om, self.zm, self.I_3z, self.I_4z, self.zb,
+                                   dimension=int(self.num_state / 3),
+                                   sjix=self.om[:, :, 0] * sjx ** 2,
+                                   sjiy=self.om[:, :, 0] * sjy ** 2,
+                                   sjiz=self.om[:, :, 0] * sjz ** 2,
+                                   aji=self.om[:, :, 0] * 1.0)
 
-        return meas_uvw, Qt, At, Rt, Bt, u, state1, state2, state3
+            qdist = tfd.MultivariateNormalTriL(loc=None, scale_tril=tf.cholesky(Qt))
+            Qt = qdist.covariance()
+
+            return meas_uvw, Qt, At, Rt, Bt, u, state1, state2, state3
 
     def beta(self, int_time, pos_res, dt, mu_pred, Sigma_pred, sensor_onehot, cur_weight, state3=None):
+        with tf.variable_scope('beta'):
+            weight = cur_weight[:, :, tf.newaxis]
 
-        weight = cur_weight[:, :, tf.newaxis]
+            layer_input = tf.concat([dt, pos_res, tf.matrix_diag_part(Sigma_pred)], axis=1)
 
-        layer_input = tf.concat([dt, pos_res, tf.matrix_diag_part(Sigma_pred)], axis=1)
+            # rnn_inpr = self.filter_layer(layer_input, name='rnn_inp_beta')
+            rnn_inp = tf.concat([layer_input], axis=1)
+            rnn_inp = FCL(rnn_inp, self.F_hidden, activation_fn=tf.nn.elu, scope='rnn_inp2_beta', reuse=tf.AUTO_REUSE)
+            rnn_inp = tfc.layers.dropout(rnn_inp, keep_prob=self.drop_rate, is_training=self.is_training, scope='dropout_inputs_beta')
 
-        # rnn_inpr = self.filter_layer(layer_input, name='rnn_inp_beta')
-        rnn_inp = tf.concat([layer_input], axis=1)
-        rnn_inp = FCL(rnn_inp, self.F_hidden, activation_fn=tf.nn.elu, scope='rnn_inp2_beta', reuse=tf.AUTO_REUSE)
-        rnn_inp = tfc.layers.dropout(rnn_inp, keep_prob=self.drop_rate, is_training=self.is_training, scope='dropout_inputs_beta')
+            with tf.variable_scope('Source_Track_Forward3/state', reuse=tf.AUTO_REUSE):
+                (out3, state3) = self.source_fwf3((int_time, rnn_inp), state=state3)
 
-        with tf.variable_scope('Source_Track_Forward3/state', reuse=tf.AUTO_REUSE):
-            (out3, state3) = self.source_fwf3((int_time, rnn_inp), state=state3)
+            cov_jer = tf.concat([tf.concat([Sigma_pred[:, 3, 3, tf.newaxis, tf.newaxis], Sigma_pred[:, 3, 7, tf.newaxis, tf.newaxis], Sigma_pred[:, 3, 11, tf.newaxis, tf.newaxis]], axis=2),
+                                 tf.concat([Sigma_pred[:, 7, 3, tf.newaxis, tf.newaxis], Sigma_pred[:, 7, 7, tf.newaxis, tf.newaxis], Sigma_pred[:, 7, 11, tf.newaxis, tf.newaxis]], axis=2),
+                                 tf.concat([Sigma_pred[:, 11, 3, tf.newaxis, tf.newaxis], Sigma_pred[:, 11, 7, tf.newaxis, tf.newaxis], Sigma_pred[:, 11, 11, tf.newaxis, tf.newaxis]], axis=2)],
+                                axis=1)
 
-        cov_jer = tf.concat([tf.concat([Sigma_pred[:, 3, 3, tf.newaxis, tf.newaxis], Sigma_pred[:, 3, 7, tf.newaxis, tf.newaxis], Sigma_pred[:, 3, 11, tf.newaxis, tf.newaxis]], axis=2),
-                             tf.concat([Sigma_pred[:, 7, 3, tf.newaxis, tf.newaxis], Sigma_pred[:, 7, 7, tf.newaxis, tf.newaxis], Sigma_pred[:, 7, 11, tf.newaxis, tf.newaxis]], axis=2),
-                             tf.concat([Sigma_pred[:, 11, 3, tf.newaxis, tf.newaxis], Sigma_pred[:, 11, 7, tf.newaxis, tf.newaxis], Sigma_pred[:, 11, 11, tf.newaxis, tf.newaxis]], axis=2)],
-                            axis=1)
+            # smooth_jer = tf.concat([mu_pred[:, 3, tf.newaxis], mu_pred[:, 7, tf.newaxis], mu_pred[:, 11, tf.newaxis]], axis=1)
 
-        # smooth_jer = tf.concat([mu_pred[:, 3, tf.newaxis], mu_pred[:, 7, tf.newaxis], mu_pred[:, 11, tf.newaxis]], axis=1)
+            n_samples = 10
+            jerk_dist = tfd.MultivariateNormalFullCovariance(loc=None, covariance_matrix=cov_jer)
+            jerk_samples = jerk_dist.sample(n_samples)
+            jerk_samples = tf.transpose(jerk_samples, [1, 0, 2])
 
-        n_samples = 10
-        jerk_dist = tfd.MultivariateNormalFullCovariance(loc=None, covariance_matrix=cov_jer)
-        jerk_samples = jerk_dist.sample(n_samples)
-        jerk_samples = tf.transpose(jerk_samples, [1, 0, 2])
+            ts = tf.tile(mu_pred[:, tf.newaxis, :], [1, n_samples, 1])
 
-        ts = tf.tile(mu_pred[:, tf.newaxis, :], [1, n_samples, 1])
+            all_states = tf.concat([ts[:, :, 0, tf.newaxis], ts[:, :, 1, tf.newaxis], ts[:, :, 2, tf.newaxis], jerk_samples[:, :, 0, tf.newaxis],
+                                    ts[:, :, 4, tf.newaxis], ts[:, :, 5, tf.newaxis], ts[:, :, 6, tf.newaxis], jerk_samples[:, :, 1, tf.newaxis],
+                                    ts[:, :, 8, tf.newaxis], ts[:, :, 9, tf.newaxis], ts[:, :, 10, tf.newaxis], jerk_samples[:, :, 2, tf.newaxis]], axis=2)
 
-        all_states = tf.concat([ts[:, :, 0, tf.newaxis], ts[:, :, 1, tf.newaxis], ts[:, :, 2, tf.newaxis], jerk_samples[:, :, 0, tf.newaxis],
-                                ts[:, :, 4, tf.newaxis], ts[:, :, 5, tf.newaxis], ts[:, :, 6, tf.newaxis], jerk_samples[:, :, 1, tf.newaxis],
-                                ts[:, :, 8, tf.newaxis], ts[:, :, 9, tf.newaxis], ts[:, :, 10, tf.newaxis], jerk_samples[:, :, 2, tf.newaxis]], axis=2)
+            # rnn_out = self.filter_layer(tf.concat([out3, rnn_inp], axis=1), name='rnn_out_beta')
+            beta0 = FCL(out3, n_samples, activation_fn=None, scope='rnn_out2_beta0', reuse=tf.AUTO_REUSE)
+            beta1 = FCL(beta0, n_samples, activation_fn=None, scope='rnn_out2_beta1', reuse=tf.AUTO_REUSE)
+            beta = FCL(beta1, n_samples, activation_fn=tf.nn.softmax, scope='rnn_out2_beta', reuse=tf.AUTO_REUSE)
+            beta = beta[:, tf.newaxis, :]
 
-        # rnn_out = self.filter_layer(tf.concat([out3, rnn_inp], axis=1), name='rnn_out_beta')
-        beta0 = FCL(out3, n_samples, activation_fn=None, scope='rnn_out2_beta0', reuse=tf.AUTO_REUSE)
-        beta1 = FCL(beta0, n_samples, activation_fn=None, scope='rnn_out2_beta1', reuse=tf.AUTO_REUSE)
-        beta = FCL(beta1, n_samples, activation_fn=tf.nn.softmax, scope='rnn_out2_beta', reuse=tf.AUTO_REUSE)
-        beta = beta[:, tf.newaxis, :]
+            mu_out = tf.squeeze(tf.matmul(beta, all_states), 1)
 
-        mu_out = tf.squeeze(tf.matmul(beta, all_states), 1)
+            # gain = tf.reshape(rnn_out2, [self.batch_size, 3])
+            # gain = tf.where(tf.equal(cur_weight * gain, tf.zeros_like(gain)), tf.zeros_like(gain), gain)
+            # pos_pred0 = tf.concat([mu_pred[:, 0, tf.newaxis], mu_pred[:, 4, tf.newaxis], mu_pred[:, 8, tf.newaxis]], axis=1)
+            # pos_pred = pos_pred0 + gain * pos_res
+            # mu_pred = mu_pred + tf.squeeze(tf.matmul(gain, pos_res[:, :, tf.newaxis]), -1)
 
-        # gain = tf.reshape(rnn_out2, [self.batch_size, 3])
-        # gain = tf.where(tf.equal(cur_weight * gain, tf.zeros_like(gain)), tf.zeros_like(gain), gain)
-        # pos_pred0 = tf.concat([mu_pred[:, 0, tf.newaxis], mu_pred[:, 4, tf.newaxis], mu_pred[:, 8, tf.newaxis]], axis=1)
-        # pos_pred = pos_pred0 + gain * pos_res
-        # mu_pred = mu_pred + tf.squeeze(tf.matmul(gain, pos_res[:, :, tf.newaxis]), -1)
+            # mu_pred = tf.concat([pos_pred[:, 0, tf.newaxis], mu_pred[:, 1, tf.newaxis], mu_pred[:, 2, tf.newaxis], mu_pred[:, 3, tf.newaxis],
+            #                      pos_pred[:, 1, tf.newaxis], mu_pred[:, 5, tf.newaxis], mu_pred[:, 6, tf.newaxis], mu_pred[:, 7, tf.newaxis],
+            #                      pos_pred[:, 2, tf.newaxis], mu_pred[:, 9, tf.newaxis], mu_pred[:, 10, tf.newaxis], mu_pred[:, 11, tf.newaxis]], axis=1)
 
-        # mu_pred = tf.concat([pos_pred[:, 0, tf.newaxis], mu_pred[:, 1, tf.newaxis], mu_pred[:, 2, tf.newaxis], mu_pred[:, 3, tf.newaxis],
-        #                      pos_pred[:, 1, tf.newaxis], mu_pred[:, 5, tf.newaxis], mu_pred[:, 6, tf.newaxis], mu_pred[:, 7, tf.newaxis],
-        #                      pos_pred[:, 2, tf.newaxis], mu_pred[:, 9, tf.newaxis], mu_pred[:, 10, tf.newaxis], mu_pred[:, 11, tf.newaxis]], axis=1)
-
-        return mu_out, state3
+            return mu_out, state3
 
     def forward_step_fn(self, params, inputs):
 
-        current_time = inputs[:, 0, tf.newaxis]
-        prev_time = inputs[:, 1, tf.newaxis]
-        int_time = inputs[:, 2, tf.newaxis]
-        meas_rae = inputs[:, 3:6]
-        cur_weight = inputs[:, 6, tf.newaxis]
-        LLA = inputs[:, 7:10]
-        sensor_onehot = inputs[:, 10:]
+        with tf.variable_scope('forward_step_fn'):
+            current_time = inputs[:, 0, tf.newaxis]
+            prev_time = inputs[:, 1, tf.newaxis]
+            int_time = inputs[:, 2, tf.newaxis]
+            meas_rae = inputs[:, 3:6]
+            cur_weight = inputs[:, 6, tf.newaxis]
+            LLA = inputs[:, 7:10]
+            sensor_onehot = inputs[:, 10:]
 
-        weight = cur_weight[:, :, tf.newaxis]
-        # inv_weight = tf.ones_like(weight) - weight
+            weight = cur_weight[:, :, tf.newaxis]
+            # inv_weight = tf.ones_like(weight) - weight
 
-        _, _, mu_t0, Sigma_t0, _, state1, state2, state3, Qt0, Rt0, _, _, _, _, _ = params
+            _, _, mu_t0, Sigma_t0, _, state1, state2, state3, Qt0, Rt0, _, _, _, _, _ = params
 
-        dt = current_time - prev_time
-        dt = tf.where(dt <= 1 / 100, tf.ones_like(dt) * 1 / 25, dt)
+            dt = current_time - prev_time
+            dt = tf.where(dt <= 1 / 100, tf.ones_like(dt) * 1 / 25, dt)
 
-        meas_uvw, Qt, At, Rt, Bt, u, state1, state2, state3 = self.alpha(int_time, dt, mu_t0, meas_rae,
-                                                                         Sigma_t0, Qt0, Rt0, LLA, sensor_onehot,
-                                                                         state1=state1, state2=state2, state3=state3)  # (bs, k)
+            meas_uvw, Qt, At, Rt, Bt, u, state1, state2, state3 = self.alpha(int_time, dt, mu_t0, meas_rae,
+                                                                             Sigma_t0, Qt0, Rt0, LLA, sensor_onehot,
+                                                                             state1=state1, state2=state2, state3=state3)  # (bs, k)
 
-        # Am = tf.expand_dims(self.c, axis=2) * tf.cholesky(tf.cast(Sigma_pred, self.vdtype))
-        # Y = tf.tile(tf.expand_dims(mu_pred, axis=2), [1, 1, self.num_state])
-        # X = tf.concat([tf.expand_dims(mu_pred, axis=2), Y + Am, Y - Am], axis=2)
-        # X = tf.transpose(X, [0, 2, 1])
+            # Am = tf.expand_dims(self.c, axis=2) * tf.cholesky(tf.cast(Sigma_pred, self.vdtype))
+            # Y = tf.tile(tf.expand_dims(mu_pred, axis=2), [1, 1, self.num_state])
+            # X = tf.concat([tf.expand_dims(mu_pred, axis=2), Y + Am, Y - Am], axis=2)
+            # X = tf.transpose(X, [0, 2, 1])
 
-        mu_pred = tf.squeeze(tf.matmul(At, tf.expand_dims(mu_t0, 2)), -1) + tf.squeeze(tf.matmul(Bt, u[:, :, tf.newaxis]), -1)
-        # mu_pred = mu_pred + tf.squeeze(tf.matmul(Bt, u[:, :, tf.newaxis]), -1)
-        Sigma_pred = tf.matmul(tf.matmul(At, Sigma_t0), At, transpose_b=True) + Qt
-        # Sigma_pred1 = tf.matmul(tf.matmul(At, Sigma_t), At, transpose_b=True)
+            mu_pred = tf.squeeze(tf.matmul(At, tf.expand_dims(mu_t0, 2)), -1) + tf.squeeze(tf.matmul(Bt, u[:, :, tf.newaxis]), -1)
+            # mu_pred = mu_pred + tf.squeeze(tf.matmul(Bt, u[:, :, tf.newaxis]), -1)
+            Sigma_pred = tf.matmul(tf.matmul(At, Sigma_t0), At, transpose_b=True) + Qt
+            # Sigma_pred1 = tf.matmul(tf.matmul(At, Sigma_t), At, transpose_b=True)
 
-        mu_pred_uvw = tf.matmul(self.meas_mat, mu_pred[:, :, tf.newaxis])
-        pos_res_uvw = meas_uvw[:, :, tf.newaxis] - mu_pred_uvw
+            mu_pred_uvw = tf.matmul(self.meas_mat, mu_pred[:, :, tf.newaxis])
+            pos_res_uvw = meas_uvw[:, :, tf.newaxis] - mu_pred_uvw
 
-        # r = sqrt(enu(1) * enu(1) + enu(2) * enu(2) + enu(3) * enu(3));
-        # az = atan2(enu(1), enu(2));
-        # el = asin(enu(3) / r);
-        lat = LLA[:, 0, tf.newaxis, tf.newaxis]
-        lon = LLA[:, 1, tf.newaxis, tf.newaxis]
-        tz = tf.zeros_like(lon)
+            # r = sqrt(enu(1) * enu(1) + enu(2) * enu(2) + enu(3) * enu(3));
+            # az = atan2(enu(1), enu(2));
+            # el = asin(enu(3) / r);
+            lat = LLA[:, 0, tf.newaxis, tf.newaxis]
+            lon = LLA[:, 1, tf.newaxis, tf.newaxis]
+            tz = tf.zeros_like(lon)
 
-        t00 = -tf.sin(lon)
-        t01 = tf.cos(lon)
-        t10 = -tf.sin(lat) * tf.cos(lon)
-        t11 = -tf.sin(lat) * tf.sin(lon)
-        t12 = tf.cos(lat)
-        t20 = tf.cos(lat) * tf.cos(lon)
-        t21 = tf.cos(lat) * tf.sin(lon)
-        t22 = tf.sin(lat)
+            t00 = -tf.sin(lon)
+            t01 = tf.cos(lon)
+            t10 = -tf.sin(lat) * tf.cos(lon)
+            t11 = -tf.sin(lat) * tf.sin(lon)
+            t12 = tf.cos(lat)
+            t20 = tf.cos(lat) * tf.cos(lon)
+            t21 = tf.cos(lat) * tf.sin(lon)
+            t22 = tf.sin(lat)
 
-        Ti2e = tf.concat([tf.concat([t00, t01, tz], axis=2), tf.concat([t10, t11, t12], axis=2), tf.concat([t20, t21, t22], axis=2)], axis=1)
+            # t00 = -tf.sin(lat) * tf.cos(lon)
+            # t01 = -tf.sin(lon)
+            # t02 = -tf.cos(lat)*tf.cos(lon)
+            # t10 = -tf.sin(lat) * tf.sin(lon)
+            # t11 = tf.cos(lon)
+            # t12 = -tf.cos(lat)*tf.sin(lon)
+            # t20 = tf.cos(lat)
+            # # t21 = tf.cos(lat) * tf.sin(lon)
+            # t22 = -tf.sin(lat)
+            #
+            Ti2e = tf.concat([tf.concat([t00, t01, tz], axis=2), tf.concat([t10, t11, t12], axis=2), tf.concat([t20, t21, t22], axis=2)], axis=1)
 
-        y_enu = tf.squeeze(tf.matmul(Ti2e, mu_pred_uvw), -1)
+            y_enu = tf.squeeze(tf.matmul(Ti2e, mu_pred_uvw), -1)
 
-        # east = y_enu[:, 0, tf.newaxis]
-        # north = y_enu[:, 1, tf.newaxis]
-        # up = y_enu[:, 2, tf.newaxis]
+            rng = tf.sqrt(y_enu[:, 0] * y_enu[:, 0] + y_enu[:, 1] * y_enu[:, 1] + y_enu[:, 2] * y_enu[:, 2])
+            az = tf.atan2(y_enu[:, 0], y_enu[:, 1])
+            az = tf.where(az < 0, az + tf.ones_like(az) * (2 * self.pi_val), az)
+            el = tf.asin(y_enu[:, 2] / rng)
 
-        # y_ned = tf.concat([north, east, tf.negative(up)], axis=1)
+            # y_ned = tf.squeeze(tf.matmul(Ti2e, mu_pred_uvw), -1)
 
-        rng = tf.sqrt(y_enu[:, 0] * y_enu[:, 0] + y_enu[:, 1] * y_enu[:, 1] + y_enu[:, 2] * y_enu[:, 2])
-        az = tf.atan2(y_enu[:, 0], y_enu[:, 1])
-        az = tf.where(az < 0, az + tf.ones_like(az) * (2 * self.pi_val), az)
-        el = tf.asin(y_enu[:, 2] / rng)
+            # east = y_enu[:, 1, tf.newaxis]
+            # north = y_enu[:, 0, tf.newaxis]
+            # up = tf.negative(y_enu[:, 2, tf.newaxis])
 
-        # rae_pred0 = tf.concat([rng[:, tf.newaxis], az[:, tf.newaxis], el[:, tf.newaxis]], axis=1)
+            # y_enu = tf.concat([east, north, up], axis=1)
 
-        # rng = tf.sqrt(y_ned[:, 0] * y_ned[:, 0] + y_enu[:, 1] * y_ned[:, 1] + y_ned[:, 2] * y_ned[:, 2])
-        # az = tf.atan2(y_ned[:, 1], y_ned[:, 0])
-        # az = tf.where(az < 0, az + tf.ones_like(az) * (2 * self.pi_val), az)
-        # el = tf.acos(y_ned[:, 2] / rng)
+            # rae_pred0 = tf.concat([rng[:, tf.newaxis], az[:, tf.newaxis], el[:, tf.newaxis]], axis=1)
 
-        # rae_pred = tf.concat([rng[:, tf.newaxis], az[:, tf.newaxis], el[:, tf.newaxis]], axis=1)
+            # rng = tf.sqrt(y_ned[:, 0] * y_ned[:, 0] + y_ned[:, 1] * y_ned[:, 1] + y_ned[:, 2] * y_ned[:, 2])
+            # az = tf.atan2(y_ned[:, 1], y_ned[:, 0])
+            # az = tf.where(az < 0, az + tf.ones_like(az) * (2 * self.pi_val), az)
+            # el = tf.acos(y_ned[:, 2] / rng)
+            #
+            # # rae_pred = tf.concat([rng[:, tf.newaxis], az[:, tf.newaxis], el[:, tf.newaxis]], axis=1)
+            #
+            az = az[:, tf.newaxis, tf.newaxis]
+            el = el[:, tf.newaxis, tf.newaxis]
 
-        az = az[:, tf.newaxis, tf.newaxis]
-        el = el[:, tf.newaxis, tf.newaxis]
+            # m01 = tf.sin(az)*tf.cos(el) + tf.cos(az)*tf.cos(el)
+            # m10 = tf.cos(az)*tf.cos(el)
+            # m11 = -tf.sin(az)*tf.cos(el)
+            # m12 = -tf.cos(az)*tf.sin(el)
+            # m22 = tf.sin(el) + tf.cos(el)
 
-        # m01 = tf.sin(az)*tf.cos(el) + tf.cos(az)*tf.cos(el)
-        # m10 = tf.cos(az)*tf.cos(el)
-        # m11 = -tf.sin(az)*tf.cos(el)
-        # m12 = -tf.cos(az)*tf.sin(el)
-        # m22 = tf.sin(el) + tf.cos(el)
+            # rae2enu = [sin(am) * cos(em), sin(am) * cos(em) + cos(am) * cos(em), - sin(am) * sin(em)
+            #            cos(am) * cos(em), -sin(am) * cos(em) - cos(am) * sin(em),
+            #            sin(em), 0                                                                            sin(em) + cos(em)]
 
-        # rae2enu = [sin(am) * cos(em), sin(am) * cos(em) + cos(am) * cos(em), - sin(am) * sin(em)
-        #            cos(am) * cos(em), -sin(am) * cos(em) - cos(am) * sin(em),
-        #            sin(em), 0                                                                            sin(em) + cos(em)]
+            m00 = tf.sin(az) * tf.cos(el)
+            m01 = tf.cos(az) * tf.cos(el)
+            m02 = -tf.sin(az) * tf.sin(el)
+            m10 = tf.cos(az) * tf.cos(el)
+            m11 = tf.sin(az) * tf.cos(el)
+            m12 = -tf.cos(az) * tf.sin(el)
+            m20 = tf.sin(el)
+            m22 = tf.cos(el)
 
-        m00 = tf.cos(az) * tf.cos(el)
-        m01 = -tf.sin(az) * tf.cos(el)
-        m02 = -tf.cos(az) * tf.sin(el)
-        m10 = tf.sin(az) * tf.cos(el)
-        m11 = tf.cos(az) * tf.cos(el)
-        m12 = -tf.sin(az) * tf.sin(el)
-        m20 = tf.sin(el)
-        m22 = tf.cos(el)
+            # m00 = tf.cos(az) * tf.sin(el)
+            # m01 = -tf.sin(az) * tf.sin(el)
+            # m02 = -tf.cos(az) * tf.cos(el)
+            # m10 = tf.sin(az) * tf.sin(el)
+            # m11 = tf.cos(az) * tf.sin(el)
+            # m12 = tf.sin(az) * tf.cos(el)
+            # m20 = tf.cos(el)
+            # m22 = -tf.sin(el)
 
-        cov_xform = tf.concat([tf.concat([m00, m01, m02], axis=2), tf.concat([m10, m11, m12], axis=2), tf.concat([m20, tz, m22], axis=2)], axis=1)
+            cov_xform = tf.concat([tf.concat([m00, m01, m02], axis=2), tf.concat([m10, m11, m12], axis=2), tf.concat([m20, tz, m22], axis=2)], axis=1)
 
-        # Rt = Rt * (tf.ones_like(Rt) * weight)
+            Rt = Rt * (tf.ones_like(Rt) * weight)
 
-        neu_cov = tf.matmul(tf.matmul(cov_xform, Rt), cov_xform, transpose_b=True)
+            enu_cov = tf.matmul(tf.matmul(cov_xform, Rt), cov_xform, transpose_b=True)
 
-        n00 = neu_cov[:, 1, 1, tf.newaxis, tf.newaxis]
-        n01 = neu_cov[:, 0, 1, tf.newaxis, tf.newaxis]
-        n02 = neu_cov[:, 1, 2, tf.newaxis, tf.newaxis]
-        n10 = neu_cov[:, 1, 0, tf.newaxis, tf.newaxis]
-        n11 = neu_cov[:, 0, 0, tf.newaxis, tf.newaxis]
-        n12 = neu_cov[:, 0, 2, tf.newaxis, tf.newaxis]
-        n20 = neu_cov[:, 2, 1, tf.newaxis, tf.newaxis]
-        n21 = neu_cov[:, 2, 0, tf.newaxis, tf.newaxis]
-        n22 = neu_cov[:, 2, 2, tf.newaxis, tf.newaxis]
+            # n00 = neu_cov[:, 1, 1, tf.newaxis, tf.newaxis]
+            # n01 = neu_cov[:, 0, 1, tf.newaxis, tf.newaxis]
+            # n02 = neu_cov[:, 1, 2, tf.newaxis, tf.newaxis]
+            # n10 = neu_cov[:, 1, 0, tf.newaxis, tf.newaxis]
+            # n11 = neu_cov[:, 0, 0, tf.newaxis, tf.newaxis]
+            # n12 = neu_cov[:, 0, 2, tf.newaxis, tf.newaxis]
+            # n20 = neu_cov[:, 2, 1, tf.newaxis, tf.newaxis]
+            # n21 = neu_cov[:, 2, 0, tf.newaxis, tf.newaxis]
+            # n22 = neu_cov[:, 2, 2, tf.newaxis, tf.newaxis]
+            #
+            # enu_cov = tf.concat([tf.concat([n00, n01, n02], axis=2), tf.concat([n10, n11, n12], axis=2), tf.concat([n20, n21, n22], axis=2)], axis=1)
 
-        enu_cov = tf.concat([tf.concat([n00, n01, n02], axis=2), tf.concat([n10, n11, n12], axis=2), tf.concat([n20, n21, n22], axis=2)], axis=1)
+            # c = tf.cholesky(enu_cov)
 
-        # c = tf.cholesky(enu_cov)
+            Ti2et = tf.transpose(Ti2e, [0, 2, 1])
 
-        Ti2et = tf.transpose(Ti2e, [0, 2, 1])
+            Rt = tf.matmul(tf.matmul(Ti2et, enu_cov), Ti2et, transpose_b=True)
 
-        Rt = tf.matmul(tf.matmul(Ti2et, enu_cov), Ti2et, transpose_b=True)
+            Rt = Rt * (tf.ones_like(Rt) * weight)
 
-        Rt = Rt * (tf.ones_like(Rt) * weight)
+            Rt_d = tf.matrix_diag_part(Rt)
+            Rt0 = tf.zeros_like(Rt)
+            Rt = tf.matrix_set_diag(Rt0, Rt_d)
 
-        Rt_d = tf.matrix_diag_part(Rt)
-        Rt0 = tf.zeros_like(Rt)
-        Rt = tf.matrix_set_diag(Rt0, Rt_d)
+            # c = tf.cholesky(Rt)
 
-        # c = tf.cholesky(Rt)
+            # Rt = tf.where(tf.is_nan(Rt), tf.ones_like(Rt), Rt)
+            # Rt = tf.where(tf.equal(Rt, 0.), tf.ones_like(Rt), Rt)
 
-        # Rt = tf.where(tf.is_nan(Rt), tf.ones_like(Rt), Rt)
-        # Rt = tf.where(tf.equal(Rt, 0.), tf.ones_like(Rt), Rt)
+            # pos_res1 = tf.where(cur_weight == 0, tf.zeros_like(pos_res1), pos_res1)
+            # x1, X1, P1, X2 = ut_state_batch_no_prop(X, self.Wm, self.Wc, Qt, self.num_state, self.batch_size, At, dt)
+            # z1, Z1, P2, Z2 = ut_meas(X1, self.Wm, self.Wc, Rt, self.meas_mat, self.batch_size)
 
-        # pos_res1 = tf.where(cur_weight == 0, tf.zeros_like(pos_res1), pos_res1)
-        # x1, X1, P1, X2 = ut_state_batch_no_prop(X, self.Wm, self.Wc, Qt, self.num_state, self.batch_size, At, dt)
-        # z1, Z1, P2, Z2 = ut_meas(X1, self.Wm, self.Wc, Rt, self.meas_mat, self.batch_size)
+            # P12 = tf.matmul(tf.matmul(X2, tf.matrix_diag(self.Wc)), Z2, transpose_b=True)
+            # Rt = tf.eye(3, 3, batch_shape=self.batch_size) * 100
+            # sc = tf.matrix_inverse(Sigma_pred)
+            # rc = tf.matrix_inverse(Rt)
 
-        # P12 = tf.matmul(tf.matmul(X2, tf.matrix_diag(self.Wc)), Z2, transpose_b=True)
-        # Rt = tf.eye(3, 3, batch_shape=self.batch_size) * 100
-        # sc = tf.matrix_inverse(Sigma_pred)
-        # rc = tf.matrix_inverse(Rt)
+            sp1 = tf.matmul(tf.matmul(self.meas_mat, Sigma_pred), self.meas_mat, transpose_b=True)
+            S = sp1 + Rt
 
-        sp1 = tf.matmul(tf.matmul(self.meas_mat, Sigma_pred), self.meas_mat, transpose_b=True)
-        S = sp1 + Rt
+            # tf.Print(Sigma_pred, [Sigma_pred], "covariance")
+            # tf.Print(Rt, [Rt], "meas_covariance")
 
-        # tf.Print(Sigma_pred, [Sigma_pred], "covariance")
-        # tf.Print(Rt, [Rt], "meas_covariance")
+            S_inv = tf.matrix_inverse(S)
+            gain = tf.matmul(tf.matmul(Sigma_pred, self.meas_mat, transpose_b=True), S_inv)
+            gain = tf.where(tf.equal(weight * gain, tf.zeros_like(gain)), tf.zeros_like(gain), gain)
+            # gain = tf.matmul(P12, tf.matrix_inverse(P2)) * cur_weight[:, tf.newaxis, :]
 
-        S_inv = tf.matrix_inverse(S)
-        gain = tf.matmul(tf.matmul(Sigma_pred, self.meas_mat, transpose_b=True), S_inv)
-        gain = tf.where(tf.equal(weight * gain, tf.zeros_like(gain)), tf.zeros_like(gain), gain)
-        # gain = tf.matmul(P12, tf.matrix_inverse(P2)) * cur_weight[:, tf.newaxis, :]
+            mu_t = mu_pred[:, :, tf.newaxis] + tf.matmul(gain, pos_res_uvw)
+            mu_t = mu_t[:, :, 0]
 
-        mu_t = mu_pred[:, :, tf.newaxis] + tf.matmul(gain, pos_res_uvw)
-        mu_t = mu_t[:, :, 0]
+            # mu_t, state3 = self.beta(current_time, int_time, pos_res1[:, :, 0], dt, mu_t, Sigma_pred0, sensor_onehot, cur_weight, state3=state3)
 
-        # mu_t, state3 = self.beta(current_time, int_time, pos_res1[:, :, 0], dt, mu_t, Sigma_pred0, sensor_onehot, cur_weight, state3=state3)
+            I_KC = self.I_12 - tf.matmul(gain, self.meas_mat)  # (bs, dim_z, dim_z)
+            Sigma_t = tf.matmul(tf.matmul(I_KC, Sigma_pred), I_KC, transpose_b=True) + tf.matmul(tf.matmul(gain, Rt), gain, transpose_b=True)
+            Sigma_t = (Sigma_t + tf.transpose(Sigma_t, [0, 2, 1])) / 2
 
-        I_KC = self.I_12 - tf.matmul(gain, self.meas_mat)  # (bs, dim_z, dim_z)
-        Sigma_t = tf.matmul(tf.matmul(I_KC, Sigma_pred), I_KC, transpose_b=True) + tf.matmul(tf.matmul(gain, Rt), gain, transpose_b=True)
-        Sigma_t = (Sigma_t + tf.transpose(Sigma_t, [0, 2, 1])) / 2
+            # Am = tf.expand_dims(self.c, axis=2) * tf.cholesky(tf.cast(Sigma_t, self.vdtype))
+            # Y = tf.tile(tf.expand_dims(mu_t, axis=2), [1, 1, self.num_state])
+            # X = tf.concat([tf.expand_dims(mu_t, axis=2), Y + Am, Y - Am], axis=2)
+            # X = tf.transpose(X, [0, 2, 1])
 
-        # Am = tf.expand_dims(self.c, axis=2) * tf.cholesky(tf.cast(Sigma_t, self.vdtype))
-        # Y = tf.tile(tf.expand_dims(mu_t, axis=2), [1, 1, self.num_state])
-        # X = tf.concat([tf.expand_dims(mu_t, axis=2), Y + Am, Y - Am], axis=2)
-        # X = tf.transpose(X, [0, 2, 1])
+            # mu_pred, _, Sigma_pred, _ = ut_state_batch(X, self.Wm, self.Wc, Qt, self.num_state, self.batch_size, At, dt, self.sensor_ecef)
+            # mu_pred = mu_pred[:, :, 0]
 
-        # mu_pred, _, Sigma_pred, _ = ut_state_batch(X, self.Wm, self.Wc, Qt, self.num_state, self.batch_size, At, dt, self.sensor_ecef)
-        # mu_pred = mu_pred[:, :, 0]
+            # ballistic = propagatef2(mu_t, dt)
 
-        # ballistic = propagatef2(mu_t, dt)
+            mu_pred = tf.squeeze(tf.matmul(At, tf.expand_dims(mu_t, 2)), -1) + tf.squeeze(tf.matmul(Bt, u[:, :, tf.newaxis]), -1)
+            # mu_pred = mu_pred + tf.squeeze(tf.matmul(Bt, u[:, :, tf.newaxis]), -1)
+            Sigma_pred = tf.matmul(tf.matmul(At, Sigma_t), At, transpose_b=True) + Qt
+            # Sigma_pred = (Sigma_pred + tf.matrix_transpose(Sigma_pred))/2
+            # # Sigma_pred1 = tf.matmul(tf.matmul(At, Sigma_t), At, transpose_b=True)
 
-        mu_pred = tf.squeeze(tf.matmul(At, tf.expand_dims(mu_t, 2)), -1) + tf.squeeze(tf.matmul(Bt, u[:, :, tf.newaxis]), -1)
-        # mu_pred = mu_pred + tf.squeeze(tf.matmul(Bt, u[:, :, tf.newaxis]), -1)
-        Sigma_pred = tf.matmul(tf.matmul(At, Sigma_t), At, transpose_b=True) + Qt
-        # Sigma_pred = (Sigma_pred + tf.matrix_transpose(Sigma_pred))/2
-        # # Sigma_pred1 = tf.matmul(tf.matmul(At, Sigma_t), At, transpose_b=True)
-
-        return mu_pred, Sigma_pred, mu_t, Sigma_t, meas_uvw, state1, state2, state3, Qt, Rt, At, Bt, S_inv, weight, u
+            return mu_pred, Sigma_pred, mu_t, Sigma_t, meas_uvw, state1, state2, state3, Qt, Rt, At, Bt, S_inv, weight, u
 
     @staticmethod
     def backward_step_fn(params, inputs):
+        with tf.variable_scope('backward_step_fn'):
+            mu_back, Sigma_back = params
+            mu_pred_tp1, Sigma_pred_tp1, mu_filt_t, Sigma_filt_t, A, weight = inputs
 
-        mu_back, Sigma_back = params
-        mu_pred_tp1, Sigma_pred_tp1, mu_filt_t, Sigma_filt_t, A, weight = inputs
+            J_t = tf.matmul(tf.transpose(A, [0, 2, 1]), tf.matrix_inverse(Sigma_pred_tp1))
+            J_t = tf.matmul(Sigma_filt_t, J_t)
 
-        J_t = tf.matmul(tf.transpose(A, [0, 2, 1]), tf.matrix_inverse(Sigma_pred_tp1))
-        J_t = tf.matmul(Sigma_filt_t, J_t)
+            mu_back = mu_filt_t + tf.matmul(J_t, mu_back - mu_pred_tp1)
+            Sigma_back = Sigma_filt_t + tf.matmul(J_t, tf.matmul(Sigma_back - Sigma_pred_tp1, J_t, adjoint_b=True))
 
-        mu_back = mu_filt_t + tf.matmul(J_t, mu_back - mu_pred_tp1)
-        Sigma_back = Sigma_filt_t + tf.matmul(J_t, tf.matmul(Sigma_back - Sigma_pred_tp1, J_t, adjoint_b=True))
-
-        return mu_back, Sigma_back
+            return mu_back, Sigma_back
 
     def compute_forwards(self):
 
-        self.mu = self.state_input
-        self.Sigma = tf.reshape(self.P_inp, [self.batch_size, self.num_state, self.num_state])
+        with tf.variable_scope('compute_forwards'):
+            self.mu = self.state_input
+            self.Sigma = tf.reshape(self.P_inp, [self.batch_size, self.num_state, self.num_state])
 
-        all_time = tf.concat([self.prev_time[:, tf.newaxis], tf.stack(self.current_timei, axis=1)], axis=1)
-        meas_rae = tf.concat([self.prev_measurement[:, tf.newaxis], tf.stack(self.measurement, axis=1)], axis=1)
-        meas_time = all_time[:, 1:, :]
-        prev_time = all_time[:, :-1, :]
+            all_time = tf.concat([self.prev_time[:, tf.newaxis], tf.stack(self.current_timei, axis=1)], axis=1)
+            meas_rae = tf.concat([self.prev_measurement[:, tf.newaxis], tf.stack(self.measurement, axis=1)], axis=1)
+            meas_time = all_time[:, 1:, :]
+            prev_time = all_time[:, :-1, :]
 
-        dt0 = meas_time[:, 0, :] - prev_time[:, 0, :]
+            dt0 = meas_time[:, 0, :] - prev_time[:, 0, :]
 
-        int_time = self.int_time
+            int_time = self.int_time
 
-        sensor_lla = tf.expand_dims(self.sensor_lla, axis=1)
-        sensor_lla = tf.tile(sensor_lla, [1, meas_rae.shape[1], 1])
+            sensor_lla = tf.expand_dims(self.sensor_lla, axis=1)
+            sensor_lla = tf.tile(sensor_lla, [1, meas_rae.shape[1], 1])
 
-        sensor_onehot = tf.expand_dims(self.sensor_vector, axis=1)
-        sensor_onehot = tf.tile(sensor_onehot, [1, meas_rae.shape[1], 1])
+            sensor_onehot = tf.expand_dims(self.sensor_vector, axis=1)
+            sensor_onehot = tf.tile(sensor_onehot, [1, meas_rae.shape[1], 1])
 
-        inputs = tf.concat([meas_time, prev_time, int_time[:, :, tf.newaxis], meas_rae[:, 1:, :], self.seqweightin[:, :, tf.newaxis], sensor_lla[:, 1:, :], sensor_onehot[:, 1:, :]], axis=2)
+            inputs = tf.concat([meas_time, prev_time, int_time[:, :, tf.newaxis], meas_rae[:, 1:, :], self.seqweightin[:, :, tf.newaxis], sensor_lla[:, 1:, :], sensor_onehot[:, 1:, :]], axis=2)
 
-        cov_input = self.prev_covariance_estimate
-        init_Q = self.Q_inp
-        init_R = self.R_inp
+            cov_input = self.prev_covariance_estimate
+            init_Q = self.Q_inp
+            init_R = self.R_inp
 
-        meas_uvw, Qt, At, Rt, Bt, u, state1, state2, state3 = self.alpha(int_time[:, 0, tf.newaxis], dt0, self.prev_state_estimate, meas_rae[:, 0, :],
-                                                                         cov_input, init_Q, init_R, sensor_lla[:, 0, :], sensor_onehot[:, 0, :],
-                                                                         state1=self.state_fw_in_state, state2=self.state_fw_in_state2, state3=self.state_fw_in_state3)
+            meas_uvw, Qt, At, Rt, Bt, u, state1, state2, state3 = self.alpha(int_time[:, 0, tf.newaxis], dt0, self.prev_state_estimate, meas_rae[:, 0, :],
+                                                                             cov_input, init_Q, init_R, sensor_lla[:, 0, :], sensor_onehot[:, 0, :],
+                                                                             state1=self.state_fw_in_state, state2=self.state_fw_in_state2, state3=self.state_fw_in_state3)
 
-        state1 = self.state_fw_in_state
-        state2 = self.state_fw_in_state2
+            state1 = self.state_fw_in_state
+            state2 = self.state_fw_in_state2
 
-        # pos_res = meas_uvw - tf.squeeze(tf.matmul(self.meas_mat, self.prev_state_estimate[:, :, tf.newaxis]), -1)
+            # pos_res = meas_uvw - tf.squeeze(tf.matmul(self.meas_mat, self.prev_state_estimate[:, :, tf.newaxis]), -1)
 
-        # mu_pred, state3 = self.beta(prev_time[:, 0, :], int_time[:, 0, tf.newaxis], pos_res, dt0, self.mu, self.Sigma, sensor_onehot[:, 0, :], self.seqweightin[:, 0, tf.newaxis], state3=state3)
+            # mu_pred, state3 = self.beta(prev_time[:, 0, :], int_time[:, 0, tf.newaxis], pos_res, dt0, self.mu, self.Sigma, sensor_onehot[:, 0, :], self.seqweightin[:, 0, tf.newaxis], state3=state3)
 
-        # init_Q = tf.ones([self.batch_size, 12, 12], self.vdtype)
-        init_Si = tf.ones([self.batch_size, 3, 3], self.vdtype)
-        init_A = tf.ones([self.batch_size, 12, 12], self.vdtype)
-        init_B = tf.ones([self.batch_size, 12, 3], self.vdtype)
-        # meas_uvw = tf.zeros([self.batch_size, 3], self.vdtype)
-        init_weight = tf.ones([self.batch_size, 1, 1], self.vdtype)
-        # init_alphas = alphas
+            # init_Q = tf.ones([self.batch_size, 12, 12], self.vdtype)
+            init_Si = tf.ones([self.batch_size, 3, 3], self.vdtype)
+            init_A = tf.ones([self.batch_size, 12, 12], self.vdtype)
+            init_B = tf.ones([self.batch_size, 12, 3], self.vdtype)
+            # meas_uvw = tf.zeros([self.batch_size, 3], self.vdtype)
+            init_weight = tf.ones([self.batch_size, 1, 1], self.vdtype)
+            # init_alphas = alphas
 
-        state3 = self.state_fw_in_state3
+            state3 = self.state_fw_in_state3
 
-        forward_states = tf.scan(self.forward_step_fn, tf.transpose(inputs, [1, 0, 2]),
-                                 initializer=(self.mu, self.Sigma, self.mu, self.Sigma, meas_uvw,
-                                              state1, state2, state3,
-                                              init_Q, init_R, init_A, init_B, init_Si,
-                                              init_weight, u),
-                                 parallel_iterations=1, name='forward')
-        return forward_states
+            forward_states = tf.scan(self.forward_step_fn, tf.transpose(inputs, [1, 0, 2]),
+                                     initializer=(self.mu, self.Sigma, self.mu, self.Sigma, meas_uvw,
+                                                  state1, state2, state3,
+                                                  init_Q, init_R, init_A, init_B, init_Si,
+                                                  init_weight, u),
+                                     parallel_iterations=1, name='forward')
+            return forward_states
 
     def compute_backwards(self, forward_states):
-        mu_pred, Sigma_pred, mu_filt, Sigma_filt, meas_uvw, state1, state2, state3, Q, R, A, B, S_inv, weights, u = forward_states
+        with tf.variable_scope('compute_backwards'):
 
-        mu_pred = tf.expand_dims(mu_pred, 3)
-        mu_filt = tf.expand_dims(mu_filt, 3)
-        # The tf.scan below that does the smoothing is initialized with the filtering distribution at time T.
-        # following the derivarion in Murphy's book, we then need to discard the last time step of the predictive
-        # (that will then have t=2,..T) and filtering distribution (t=1:T-1)
-        states_scan = [mu_pred[:-1, :, :, :],
-                       Sigma_pred[:-1, :, :, :],
-                       mu_filt[:-1, :, :, :],
-                       Sigma_filt[:-1, :, :, :],
-                       A[:-1],
-                       weights[:-1]]
+            mu_pred, Sigma_pred, mu_filt, Sigma_filt, meas_uvw, state1, state2, state3, Q, R, A, B, S_inv, weights, u = forward_states
 
-        # Reverse time dimension
-        dims = [0]
-        for i, state in enumerate(states_scan):
-            states_scan[i] = tf.reverse(state, dims)
+            mu_pred = tf.expand_dims(mu_pred, 3)
+            mu_filt = tf.expand_dims(mu_filt, 3)
+            # The tf.scan below that does the smoothing is initialized with the filtering distribution at time T.
+            # following the derivarion in Murphy's book, we then need to discard the last time step of the predictive
+            # (that will then have t=2,..T) and filtering distribution (t=1:T-1)
+            states_scan = [mu_pred[:-1, :, :, :],
+                           Sigma_pred[:-1, :, :, :],
+                           mu_filt[:-1, :, :, :],
+                           Sigma_filt[:-1, :, :, :],
+                           A[:-1],
+                           weights[:-1]]
 
-        # Compute backwards states
-        backward_states = tf.scan(self.backward_step_fn, states_scan,
-                                  initializer=(mu_filt[-1, :, :, :], Sigma_filt[-1, :, :, :]), parallel_iterations=1,
-                                  name='backward')
+            # Reverse time dimension
+            dims = [0]
+            for i, state in enumerate(states_scan):
+                states_scan[i] = tf.reverse(state, dims)
 
-        # Reverse time dimension
-        backward_states = list(backward_states)
-        dims = [0]
-        for i, state in enumerate(backward_states):
-            backward_states[i] = tf.reverse(state, dims)
+            # Compute backwards states
+            backward_states = tf.scan(self.backward_step_fn, states_scan,
+                                      initializer=(mu_filt[-1, :, :, :], Sigma_filt[-1, :, :, :]), parallel_iterations=1,
+                                      name='backward')
 
-        # Add the final state from the filtering distribution
-        backward_states[0] = tf.concat([backward_states[0], mu_filt[-1:, :, :, :]], axis=0)
-        backward_states[1] = tf.concat([backward_states[1], Sigma_filt[-1:, :, :, :]], axis=0)
+            # Reverse time dimension
+            backward_states = list(backward_states)
+            dims = [0]
+            for i, state in enumerate(backward_states):
+                backward_states[i] = tf.reverse(state, dims)
 
-        # Remove extra dimension in the mean
-        backward_states[0] = backward_states[0][:, :, :, 0]
+            # Add the final state from the filtering distribution
+            backward_states[0] = tf.concat([backward_states[0], mu_filt[-1:, :, :, :]], axis=0)
+            backward_states[1] = tf.concat([backward_states[1], Sigma_filt[-1:, :, :, :]], axis=0)
 
-        return backward_states, Q, R, A, B, S_inv, u, meas_uvw, state1, state2, state3
+            # Remove extra dimension in the mean
+            backward_states[0] = backward_states[0][:, :, :, 0]
+
+            return backward_states, Q, R, A, B, S_inv, u, meas_uvw, state1, state2, state3
 
     def filter(self):
-        mu_pred, Sigma_pred, mu_filt, Sigma_filt, meas_uvw, state1, state2, state3, Q, R, A, B, S_inv, weights, u = forward_states = \
-            self.compute_forwards()
+        with tf.variable_scope('filter'):
+            mu_pred, Sigma_pred, mu_filt, Sigma_filt, meas_uvw, state1, state2, state3, Q, R, A, B, S_inv, weights, u = forward_states = \
+                self.compute_forwards()
 
-        state1c = tf.transpose(state1[0], [1, 0, 2])
-        state1h = tf.transpose(state1[1], [1, 0, 2])
-        state1_out = tf.contrib.rnn.LSTMStateTuple(state1c[:, -1, :], state1h[:, -1, :])
+            state1c = tf.transpose(state1[0], [1, 0, 2])
+            state1h = tf.transpose(state1[1], [1, 0, 2])
+            state1_out = tf.contrib.rnn.LSTMStateTuple(state1c[:, -1, :], state1h[:, -1, :])
 
-        state2c = tf.transpose(state2[0], [1, 0, 2])
-        state2h = tf.transpose(state2[1], [1, 0, 2])
-        state2_out = tf.contrib.rnn.LSTMStateTuple(state2c[:, -1, :], state2h[:, -1, :])
+            state2c = tf.transpose(state2[0], [1, 0, 2])
+            state2h = tf.transpose(state2[1], [1, 0, 2])
+            state2_out = tf.contrib.rnn.LSTMStateTuple(state2c[:, -1, :], state2h[:, -1, :])
 
-        state3c = tf.transpose(state3[0], [1, 0, 2])
-        state3h = tf.transpose(state3[1], [1, 0, 2])
-        state3_out = tf.contrib.rnn.LSTMStateTuple(state3c[:, -1, :], state3h[:, -1, :])
+            state3c = tf.transpose(state3[0], [1, 0, 2])
+            state3h = tf.transpose(state3[1], [1, 0, 2])
+            state3_out = tf.contrib.rnn.LSTMStateTuple(state3c[:, -1, :], state3h[:, -1, :])
 
-        forward_states_filter = [mu_filt, Sigma_filt]
-        forward_states_pred = [mu_pred, Sigma_pred]
+            forward_states_filter = [mu_filt, Sigma_filt]
+            forward_states_pred = [mu_pred, Sigma_pred]
 
-        # alphas = tf.transpose(alphas, [1, 0, 2])
+            # alphas = tf.transpose(alphas, [1, 0, 2])
 
-        # Swap batch dimension and time dimension
-        forward_states_filter[0] = tf.transpose(forward_states_filter[0], [1, 0, 2])
-        forward_states_filter[1] = tf.transpose(forward_states_filter[1], [1, 0, 2, 3])
+            # Swap batch dimension and time dimension
+            forward_states_filter[0] = tf.transpose(forward_states_filter[0], [1, 0, 2])
+            forward_states_filter[1] = tf.transpose(forward_states_filter[1], [1, 0, 2, 3])
 
-        forward_states_pred[0] = tf.transpose(forward_states_pred[0], [1, 0, 2])
-        forward_states_pred[1] = tf.transpose(forward_states_pred[1], [1, 0, 2, 3])
+            forward_states_pred[0] = tf.transpose(forward_states_pred[0], [1, 0, 2])
+            forward_states_pred[1] = tf.transpose(forward_states_pred[1], [1, 0, 2, 3])
 
-        return tuple(forward_states_filter), tf.transpose(A, [1, 0, 2, 3]), tf.transpose(Q, [1, 0, 2, 3]), \
-               tf.transpose(R, [1, 0, 2, 3]), tf.transpose(B, [1, 0, 2, 3]), tf.transpose(S_inv, [1, 0, 2, 3]), \
-               tf.transpose(u, [1, 0, 2]), tf.transpose(meas_uvw, [1, 0, 2]), tuple(forward_states_pred), \
-               state1_out, state2_out, state3_out
+            return tuple(forward_states_filter), tf.transpose(A, [1, 0, 2, 3]), tf.transpose(Q, [1, 0, 2, 3]), \
+                   tf.transpose(R, [1, 0, 2, 3]), tf.transpose(B, [1, 0, 2, 3]), tf.transpose(S_inv, [1, 0, 2, 3]), \
+                   tf.transpose(u, [1, 0, 2]), tf.transpose(meas_uvw, [1, 0, 2]), tuple(forward_states_pred), \
+                   state1_out, state2_out, state3_out
 
     def smooth(self):
-        backward_states, Q, R, A, B, S_inv, u, meas_uvw, state1, state2, state3 = self.compute_backwards(self.compute_forwards())
 
-        state1c = tf.transpose(state1[0], [1, 0, 2])
-        state1h = tf.transpose(state1[1], [1, 0, 2])
-        state1_out = tf.contrib.rnn.LSTMStateTuple(state1c[:, -1, :], state1h[:, -1, :])
+        with tf.variable_scope('smooth'):
+            backward_states, Q, R, A, B, S_inv, u, meas_uvw, state1, state2, state3 = self.compute_backwards(self.compute_forwards())
 
-        state2c = tf.transpose(state2[0], [1, 0, 2])
-        state2h = tf.transpose(state2[1], [1, 0, 2])
-        state2_out = tf.contrib.rnn.LSTMStateTuple(state2c[:, -1, :], state2h[:, -1, :])
+            state1c = tf.transpose(state1[0], [1, 0, 2])
+            state1h = tf.transpose(state1[1], [1, 0, 2])
+            state1_out = tf.contrib.rnn.LSTMStateTuple(state1c[:, -1, :], state1h[:, -1, :])
 
-        state3c = tf.transpose(state3[0], [1, 0, 2])
-        state3h = tf.transpose(state3[1], [1, 0, 2])
-        state3_out = tf.contrib.rnn.LSTMStateTuple(state3c[:, -1, :], state3h[:, -1, :])
+            state2c = tf.transpose(state2[0], [1, 0, 2])
+            state2h = tf.transpose(state2[1], [1, 0, 2])
+            state2_out = tf.contrib.rnn.LSTMStateTuple(state2c[:, -1, :], state2h[:, -1, :])
 
-        # Swap batch dimension and time dimension
-        backward_states[0] = tf.transpose(backward_states[0], [1, 0, 2])
-        backward_states[1] = tf.transpose(backward_states[1], [1, 0, 2, 3])
-        return tuple(backward_states), tf.transpose(A, [1, 0, 2, 3]), tf.transpose(Q, [1, 0, 2, 3]), \
-               tf.transpose(R, [1, 0, 2, 3]), tf.transpose(B, [1, 0, 2, 3]), tf.transpose(S_inv, [1, 0, 2, 3]), \
-               tf.transpose(u, [1, 0, 2]), tf.transpose(meas_uvw, [1, 0, 2]), \
-               state1_out, state2_out, state3_out
+            state3c = tf.transpose(state3[0], [1, 0, 2])
+            state3h = tf.transpose(state3[1], [1, 0, 2])
+            state3_out = tf.contrib.rnn.LSTMStateTuple(state3c[:, -1, :], state3h[:, -1, :])
+
+            # Swap batch dimension and time dimension
+            backward_states[0] = tf.transpose(backward_states[0], [1, 0, 2])
+            backward_states[1] = tf.transpose(backward_states[1], [1, 0, 2, 3])
+            return tuple(backward_states), tf.transpose(A, [1, 0, 2, 3]), tf.transpose(Q, [1, 0, 2, 3]), \
+                   tf.transpose(R, [1, 0, 2, 3]), tf.transpose(B, [1, 0, 2, 3]), tf.transpose(S_inv, [1, 0, 2, 3]), \
+                   tf.transpose(u, [1, 0, 2]), tf.transpose(meas_uvw, [1, 0, 2]), \
+                   state1_out, state2_out, state3_out
 
     @staticmethod
     def _sast(a, s):
@@ -689,140 +722,144 @@ class Filter(object):
         return sastt
 
     def get_elbo(self, backward_states):
+        with tf.variable_scope('Loss_Calculation'):
 
-        mu_smooth = backward_states[0]
-        Sigma_smooth = backward_states[1]
+            mu_smooth = backward_states[0]
+            Sigma_smooth = backward_states[1]
 
-        ssdiag = tf.matrix_diag_part(Sigma_smooth)
-        ssdiag = tf.where(tf.less_equal(ssdiag, tf.zeros_like(ssdiag)), tf.ones_like(ssdiag) * 1, ssdiag)
+            ssdiag = tf.matrix_diag_part(Sigma_smooth)
+            ssdiag = tf.where(tf.less_equal(ssdiag, tf.zeros_like(ssdiag)), tf.ones_like(ssdiag) * 1, ssdiag)
 
-        rodiag = tf.matrix_diag_part(self.ro_list)
-        rodiag = tf.where(tf.less_equal(rodiag, tf.zeros_like(rodiag)), tf.ones_like(rodiag) * 1, rodiag)
+            rodiag = tf.matrix_diag_part(self.ro_list)
+            rodiag = tf.where(tf.less_equal(rodiag, tf.zeros_like(rodiag)), tf.ones_like(rodiag) * 1, rodiag)
 
-        Sigma_smooth = tf.matrix_set_diag(Sigma_smooth, ssdiag)
-        self.ro_list = tf.matrix_set_diag(self.ro_list, rodiag)
+            Sigma_smooth = tf.matrix_set_diag(Sigma_smooth, ssdiag)
+            self.ro_list = tf.matrix_set_diag(self.ro_list, rodiag)
 
-        all_truth = tf.stack(self.truth_state, axis=1)
-        # mvn_smooth = tfd.MultivariateNormalTriL(mu_smooth, tf.cholesky(Sigma_smooth))
-        mvn_smooth = tfd.MultivariateNormalDiag(mu_smooth, tf.sqrt(tf.matrix_diag_part(Sigma_smooth)))
-        self.mvn_inv = tf.matrix_inverse(mvn_smooth.covariance())
+            all_truth = tf.stack(self.truth_state, axis=1)
+            # mvn_smooth = tfd.MultivariateNormalTriL(mu_smooth, tf.cholesky(Sigma_smooth))
+            mvn_smooth = tfd.MultivariateNormalDiag(mu_smooth, tf.sqrt(tf.matrix_diag_part(Sigma_smooth)))
+            self.mvn_inv = tf.matrix_inverse(mvn_smooth.covariance())
 
-        z_smooth = mvn_smooth.sample()
-        self.state_error = all_truth - z_smooth
-        self.state_error = tf.where(self.state_error < 1e-6, tf.ones_like(self.state_error) * 1e-6, self.state_error)
-        self.state_error = self.state_error[:, :, :, tf.newaxis]
+            z_smooth = mvn_smooth.sample()
+            self.state_error = all_truth - z_smooth
+            self.state_error = tf.where(self.state_error < 1e-6, tf.ones_like(self.state_error) * 1e-6, self.state_error)
+            self.state_error = self.state_error[:, :, :, tf.newaxis]
 
-        truth_pos = tf.concat([all_truth[:, :, 0, tf.newaxis], all_truth[:, :, 4, tf.newaxis], all_truth[:, :, 8, tf.newaxis]], axis=2)
-        truth_vel = tf.concat([all_truth[:, :, 1, tf.newaxis], all_truth[:, :, 5, tf.newaxis], all_truth[:, :, 9, tf.newaxis]], axis=2)
-        truth_acc = tf.concat([all_truth[:, :, 2, tf.newaxis], all_truth[:, :, 6, tf.newaxis], all_truth[:, :, 10, tf.newaxis]], axis=2)
-        truth_jer = tf.concat([all_truth[:, :, 3, tf.newaxis], all_truth[:, :, 7, tf.newaxis], all_truth[:, :, 11, tf.newaxis]], axis=2)
+            truth_pos = tf.concat([all_truth[:, :, 0, tf.newaxis], all_truth[:, :, 4, tf.newaxis], all_truth[:, :, 8, tf.newaxis]], axis=2)
+            truth_vel = tf.concat([all_truth[:, :, 1, tf.newaxis], all_truth[:, :, 5, tf.newaxis], all_truth[:, :, 9, tf.newaxis]], axis=2)
+            truth_acc = tf.concat([all_truth[:, :, 2, tf.newaxis], all_truth[:, :, 6, tf.newaxis], all_truth[:, :, 10, tf.newaxis]], axis=2)
+            truth_jer = tf.concat([all_truth[:, :, 3, tf.newaxis], all_truth[:, :, 7, tf.newaxis], all_truth[:, :, 11, tf.newaxis]], axis=2)
 
-        smooth_pos = tf.concat([z_smooth[:, :, 0, tf.newaxis], z_smooth[:, :, 4, tf.newaxis], z_smooth[:, :, 8, tf.newaxis]], axis=2)
-        smooth_vel = tf.concat([z_smooth[:, :, 1, tf.newaxis], z_smooth[:, :, 5, tf.newaxis], z_smooth[:, :, 9, tf.newaxis]], axis=2)
-        smooth_acc = tf.concat([z_smooth[:, :, 2, tf.newaxis], z_smooth[:, :, 6, tf.newaxis], z_smooth[:, :, 10, tf.newaxis]], axis=2)
-        smooth_jer = tf.concat([z_smooth[:, :, 3, tf.newaxis], z_smooth[:, :, 7, tf.newaxis], z_smooth[:, :, 11, tf.newaxis]], axis=2)
+            smooth_pos = tf.concat([z_smooth[:, :, 0, tf.newaxis], z_smooth[:, :, 4, tf.newaxis], z_smooth[:, :, 8, tf.newaxis]], axis=2)
+            smooth_vel = tf.concat([z_smooth[:, :, 1, tf.newaxis], z_smooth[:, :, 5, tf.newaxis], z_smooth[:, :, 9, tf.newaxis]], axis=2)
+            smooth_acc = tf.concat([z_smooth[:, :, 2, tf.newaxis], z_smooth[:, :, 6, tf.newaxis], z_smooth[:, :, 10, tf.newaxis]], axis=2)
+            smooth_jer = tf.concat([z_smooth[:, :, 3, tf.newaxis], z_smooth[:, :, 7, tf.newaxis], z_smooth[:, :, 11, tf.newaxis]], axis=2)
 
-        pos_error = truth_pos - smooth_pos
-        vel_error = truth_vel - smooth_vel
-        acc_error = truth_acc - smooth_acc
-        jer_error = truth_jer - smooth_jer
+            pos_error = truth_pos - smooth_pos
+            vel_error = truth_vel - smooth_vel
+            acc_error = truth_acc - smooth_acc
+            jer_error = truth_jer - smooth_jer
 
-        Az_tm1 = tf.matmul(self.ao_list[:, :-1], tf.expand_dims(all_truth[:, :-1], 3))
-        Bz_tm1 = tf.matmul(self.bo_list[:, :-1], tf.expand_dims(self.uo_list[:, :-1], 3))
-        mu_transition = Az_tm1[:, :, :, 0] + Bz_tm1[:, :, :, 0]
-        z_t_transition = all_truth[:, 1:, :]
+            Az_tm1 = tf.matmul(self.ao_list[:, :-1], tf.expand_dims(all_truth[:, :-1], 3))
+            Bz_tm1 = tf.matmul(self.bo_list[:, :-1], tf.expand_dims(self.uo_list[:, :-1], 3))
+            mu_transition = Az_tm1[:, :, :, 0] + Bz_tm1[:, :, :, 0]
+            z_t_transition = all_truth[:, 1:, :]
 
-        trans_centered = z_t_transition - mu_transition
-        # self.to_list = trans_centered
-        # self.trans1 = mu_transition
-        # self.trans2 = z_t_transition
+            trans_centered = z_t_transition - mu_transition
+            # self.to_list = trans_centered
+            # self.trans1 = mu_transition
+            # self.trans2 = z_t_transition
 
-        Qdiag = tf.matrix_diag_part(self.qo_list[:, :-1])
-        mvn_transition = tfd.MultivariateNormalTriL(tf.zeros(self.num_state, dtype=self.vdtype), tf.cholesky(self.qo_list[:, :-1]))
-        mvn_transition = tfd.MultivariateNormalDiag(None, tf.sqrt(Qdiag))
-        log_prob_transition = mvn_transition.log_prob(trans_centered) * self.seqweightin[:, :-1]
+            Qdiag = tf.matrix_diag_part(self.qo_list[:, :-1])
+            # mvn_transition = tfd.MultivariateNormalTriL(tf.zeros(self.num_state, dtype=self.vdtype), tf.cholesky(self.qo_list[:, :-1]))
+            # mvn_transition = tfd.MultivariateNormalDiag(None, tf.sqrt(Qdiag))
+            # log_prob_transition = mvn_transition.log_prob(trans_centered) * self.seqweightin[:, :-1]
 
-        # trans_centered_j = tf.concat([trans_centered[:, :, 3, tf.newaxis], trans_centered[:, :, 7, tf.newaxis], trans_centered[:, :, 11, tf.newaxis]], axis=2)
-        # Qdiag_j = tf.concat([Qdiag[:, :, 3, tf.newaxis], Qdiag[:, :, 7, tf.newaxis], Qdiag[:, :, 11, tf.newaxis]], axis=2)
+            trans_centered_j = tf.concat([trans_centered[:, :, 3, tf.newaxis], trans_centered[:, :, 7, tf.newaxis], trans_centered[:, :, 11, tf.newaxis]], axis=2)
+            Qdiag_j = tf.concat([Qdiag[:, :, 3, tf.newaxis], Qdiag[:, :, 7, tf.newaxis], Qdiag[:, :, 11, tf.newaxis]], axis=2)
 
-        trans_centered_a = tf.concat([trans_centered[:, :, 2, tf.newaxis], trans_centered[:, :, 6, tf.newaxis], trans_centered[:, :, 10, tf.newaxis]], axis=2)
+            # trans_centered_a = tf.concat([trans_centered[:, :, 2, tf.newaxis], trans_centered[:, :, 6, tf.newaxis], trans_centered[:, :, 10, tf.newaxis]], axis=2)
 
-        Qdiag_a = tf.concat([Qdiag[:, :, 2, tf.newaxis], Qdiag[:, :, 6, tf.newaxis], Qdiag[:, :, 10, tf.newaxis]], axis=2)
+            # Qdiag_a = tf.concat([Qdiag[:, :, 2, tf.newaxis], Qdiag[:, :, 6, tf.newaxis], Qdiag[:, :, 10, tf.newaxis]], axis=2)
 
-        mvn_transition = tfd.MultivariateNormalDiag(None, tf.sqrt(Qdiag_a))
-        # mvn_transition = tfd.MultivariateNormalTriL(None, tf.cholesky(Qdiag_aj))
-        log_prob_transition = mvn_transition.log_prob(trans_centered_a) * self.seqweightin[:, :-1]
+            mvn_transition = tfd.MultivariateNormalDiag(None, tf.sqrt(Qdiag_j))
+            # mvn_transition = tfd.MultivariateNormalTriL(None, tf.cholesky(Qdiag_aj))
+            log_prob_transition = mvn_transition.log_prob(trans_centered_j) * self.seqweightin[:, :-1]
 
-        self.y_t_resh = tf.concat([all_truth[:, :, 0, tf.newaxis], all_truth[:, :, 4, tf.newaxis], all_truth[:, :, 8, tf.newaxis]], axis=2)
-        # self.Cz_t = tf.concat([z_smooth[:, :, 0, tf.newaxis], z_smooth[:, :, 4, tf.newaxis], z_smooth[:, :, 8, tf.newaxis]], axis=2)
-        # self.y_t_resh = tf.matmul(z_smooth, self.meas_mat, transpose_b=True)
-        self.Cz_t = self.new_meas
-        emiss_centered = (self.Cz_t - self.y_t_resh) + tf.ones_like(self.Cz_t) * 1e-20
-        # emiss_centered = tf.where(emiss_centered < 1., tf.sqrt(emiss_centered), emiss_centered)
-        # mvn_emission = tfd.MultivariateNormalTriL(None, tf.cholesky(self.ro_list))
-        mvn_emission = tfd.MultivariateNormalDiag(None, tf.sqrt(tf.matrix_diag_part(self.ro_list)))
+            self.y_t_resh = tf.concat([all_truth[:, :, 0, tf.newaxis], all_truth[:, :, 4, tf.newaxis], all_truth[:, :, 8, tf.newaxis]], axis=2)
+            # self.Cz_t = tf.concat([z_smooth[:, :, 0, tf.newaxis], z_smooth[:, :, 4, tf.newaxis], z_smooth[:, :, 8, tf.newaxis]], axis=2)
+            # self.y_t_resh = tf.matmul(z_smooth, self.meas_mat, transpose_b=True)
+            self.Cz_t = self.new_meas
+            emiss_centered = (self.Cz_t - self.y_t_resh)
+            # emiss_centered = tf.where(emiss_centered < 1., tf.sqrt(emiss_centered), emiss_centered)
+            # mvn_emission = tfd.MultivariateNormalTriL(None, tf.cholesky(self.ro_list))
+            mvn_emission = tfd.MultivariateNormalDiag(None, tf.sqrt(tf.matrix_diag_part(self.ro_list)))
 
-        # Distribution of the initial state p(z_1|z_0)
-        z_0 = z_smooth[:, 0, :]
-        mvn_0 = tfd.MultivariateNormalTriL(self.mu, tf.cholesky(self.Sigma))
+            # Distribution of the initial state p(z_1|z_0)
+            z_0 = z_smooth[:, 0, :]
+            mvn_0 = tfd.MultivariateNormalTriL(self.mu, tf.cholesky(self.Sigma))
 
-        num_el = tf.reduce_sum(self.seqweightin)  # / tf.cast(self.batch_size, self.vdtype)
-        num_el2 = tf.reduce_sum(tf.cast(self.batch_size, self.vdtype))
+            num_el = tf.reduce_sum(self.seqweightin) / tf.cast(self.batch_size, self.vdtype)
+            num_el = tf.cast(tf.reduce_sum(self.batch_size * self.max_seq), self.vdtype)
+            num_el2 = tf.reduce_sum(tf.cast(self.batch_size, self.vdtype))
 
-        state_error_pos = truth_pos - smooth_pos
-        meas_error_pos = tf.sqrt(tf.square(truth_pos - self.new_meas))
-        meas_error_pos = meas_error_pos + tf.ones_like(meas_error_pos) * 1e-20
+            state_error_pos = truth_pos - smooth_pos
+            meas_error_pos = tf.sqrt(tf.square(truth_pos - self.new_meas))
+            # meas_error_pos = meas_error_pos + tf.ones_like(meas_error_pos) * 1e-20
 
-        # meas_dist = tfd.MultivariateNormalTriL(meas_error_pos, tf.cholesky(meas_error_pos_cov))
-        meas_dist = tfd.MultivariateNormalDiag(None, tf.sqrt(meas_error_pos))
-        self.meas_error = tf.truediv(tf.reduce_sum(tf.negative(meas_dist.log_prob(state_error_pos)) * self.seqweightin), num_el * 3.)
+            # meas_dist = tfd.MultivariateNormalTriL(meas_error_pos, tf.cholesky(meas_error_pos_cov))
+            meas_dist = tfd.MultivariateNormalDiag(None, tf.sqrt(meas_error_pos))
+            self.meas_error = tf.truediv(tf.reduce_sum(tf.negative(meas_dist.log_prob(state_error_pos)) * self.seqweightin), num_el * 3.)
 
-        cov_pos = tf.concat([tf.concat([Sigma_smooth[:, :, 0, 0, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 0, 4, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 0, 8, tf.newaxis, tf.newaxis]], axis=3),
-                             tf.concat([Sigma_smooth[:, :, 4, 0, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 4, 4, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 4, 8, tf.newaxis, tf.newaxis]], axis=3),
-                             tf.concat([Sigma_smooth[:, :, 8, 0, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 8, 4, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 8, 8, tf.newaxis, tf.newaxis]], axis=3)],
-                            axis=2)
+            cov_pos = tf.concat([tf.concat([Sigma_smooth[:, :, 0, 0, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 0, 4, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 0, 8, tf.newaxis, tf.newaxis]], axis=3),
+                                 tf.concat([Sigma_smooth[:, :, 4, 0, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 4, 4, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 4, 8, tf.newaxis, tf.newaxis]], axis=3),
+                                 tf.concat([Sigma_smooth[:, :, 8, 0, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 8, 4, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 8, 8, tf.newaxis, tf.newaxis]], axis=3)],
+                                axis=2)
 
-        cov_vel = tf.concat([tf.concat([Sigma_smooth[:, :, 1, 1, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 1, 5, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 1, 9, tf.newaxis, tf.newaxis]], axis=3),
-                             tf.concat([Sigma_smooth[:, :, 5, 1, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 5, 5, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 5, 9, tf.newaxis, tf.newaxis]], axis=3),
-                             tf.concat([Sigma_smooth[:, :, 9, 1, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 9, 5, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 9, 9, tf.newaxis, tf.newaxis]], axis=3)],
-                            axis=2)
+            cov_vel = tf.concat([tf.concat([Sigma_smooth[:, :, 1, 1, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 1, 5, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 1, 9, tf.newaxis, tf.newaxis]], axis=3),
+                                 tf.concat([Sigma_smooth[:, :, 5, 1, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 5, 5, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 5, 9, tf.newaxis, tf.newaxis]], axis=3),
+                                 tf.concat([Sigma_smooth[:, :, 9, 1, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 9, 5, tf.newaxis, tf.newaxis], Sigma_smooth[:, :, 9, 9, tf.newaxis, tf.newaxis]], axis=3)],
+                                axis=2)
 
-        pos_error = pos_error[:, :, :, tf.newaxis]
-        M1P = tf.matmul(pos_error, tf.matrix_inverse(cov_pos), transpose_a=True)
-        M2P = tf.matmul(M1P, pos_error)
+            pos_error = pos_error[:, :, :, tf.newaxis]
+            M1P = tf.matmul(pos_error, tf.matrix_inverse(cov_pos), transpose_a=True)
+            M2P = tf.matmul(M1P, pos_error)
 
-        self.MDP = tf.sqrt(tf.squeeze(M2P / 3, -1))
-        self.MDPi = tf.sqrt((tf.ones_like(self.MDP, self.vdtype) / tf.squeeze(M2P, -1)))
-        self.maha_loss = tf.truediv(tf.reduce_sum((self.MDP * self.seqweightin[:, :, tf.newaxis] + self.MDPi * self.seqweightin[:, :, tf.newaxis])), num_el)
+            self.MDP = tf.sqrt(tf.squeeze(M2P / 3, -1))
+            self.MDPi = tf.sqrt((tf.ones_like(self.MDP, self.vdtype) / tf.squeeze(M2P, -1)))
+            self.maha_loss = tf.truediv(tf.reduce_sum((self.MDP * self.seqweightin[:, :, tf.newaxis] + self.MDPi * self.seqweightin[:, :, tf.newaxis])), num_el)
 
-        # train_cov00 = tfd.MultivariateNormalFullCovariance(loc=None, covariance_matrix=Sigma_smooth)
-        train_cov00 = tfd.MultivariateNormalDiag(loc=None, scale_diag=tf.sqrt(tf.matrix_diag_part(Sigma_smooth)))
-        # train_cov_pos = tfd.MultivariateNormalFullCovariance(loc=None, covariance_matrix=cov_pos)
-        train_cov_pos = tfd.MultivariateNormalDiag(loc=None, scale_diag=tf.sqrt(tf.matrix_diag_part(cov_pos)))
-        # train_cov_vel = tfd.MultivariateNormalFullCovariance(loc=None, covariance_matrix=cov_vel)
-        train_cov_vel = tfd.MultivariateNormalDiag(loc=None, scale_diag=tf.sqrt(tf.matrix_diag_part(cov_vel)))
+            # train_cov00 = tfd.MultivariateNormalFullCovariance(loc=None, covariance_matrix=Sigma_smooth)
+            train_cov00 = tfd.MultivariateNormalDiag(loc=None, scale_diag=tf.sqrt(tf.matrix_diag_part(Sigma_smooth)))
+            # train_cov_pos = tfd.MultivariateNormalFullCovariance(loc=None, covariance_matrix=cov_pos)
+            train_cov_pos = tfd.MultivariateNormalDiag(loc=None, scale_diag=tf.sqrt(tf.matrix_diag_part(cov_pos)))
+            # train_cov_vel = tfd.MultivariateNormalFullCovariance(loc=None, covariance_matrix=cov_vel)
+            train_cov_vel = tfd.MultivariateNormalDiag(loc=None, scale_diag=tf.sqrt(tf.matrix_diag_part(cov_vel)))
 
-        self.trace_loss = tf.truediv(tf.reduce_sum(tf.sqrt(tf.pow(tf.matrix_diag_part(Sigma_smooth), 2))), num_el)
+            self.trace_loss = tf.truediv(tf.reduce_sum(tf.sqrt(tf.pow(tf.matrix_diag_part(Sigma_smooth), 2))), num_el)
 
-        self.error_loss_pos = tf.truediv(tf.reduce_sum(tf.negative(train_cov_pos.log_prob(pos_error[:, :, :, 0])) * self.seqweightin), num_el * 3.)
-        self.error_loss_vel = tf.truediv(tf.reduce_sum(tf.negative(train_cov_vel.log_prob(vel_error)) * self.seqweightin), num_el * 3.)
+            self.error_loss_pos = tf.truediv(tf.reduce_sum(tf.negative(train_cov_pos.log_prob(pos_error[:, :, :, 0])) * self.seqweightin), num_el * 3.)
+            self.error_loss_vel = tf.truediv(tf.reduce_sum(tf.negative(train_cov_vel.log_prob(vel_error)) * self.seqweightin), num_el * 3.)
 
-        self.error_loss_full = tf.truediv(tf.reduce_sum(tf.negative(train_cov00.log_prob(self.state_error[:, :, :, 0])) * self.seqweightin), (num_el * 12.))
-        self.error_loss_initial = tf.truediv(tf.reduce_sum(tf.negative(mvn_0.log_prob(z_0) * self.seqweightin[:, 0])), (num_el * 12.))
+            self.error_loss_full = tf.truediv(tf.reduce_sum(tf.negative(train_cov00.log_prob(self.state_error[:, :, :, 0])) * self.seqweightin), (num_el * 12.))
+            self.error_loss_initial = tf.truediv(tf.reduce_sum(tf.negative(mvn_0.log_prob(z_0) * self.seqweightin[:, 0])), (num_el * 12.))
 
-        self.entropy = tf.truediv(tf.reduce_sum(mvn_smooth.log_prob(z_smooth) * self.seqweightin), num_el * 12.)
-        self.rl = tf.truediv(tf.reduce_sum(tf.negative(mvn_emission.log_prob(emiss_centered)) * self.seqweightin), num_el * 3.)
+            self.entropy = tf.truediv(tf.reduce_sum(mvn_smooth.log_prob(z_smooth) * self.seqweightin), num_el * 12.)
+            self.rl = tf.truediv(tf.reduce_sum(tf.negative(mvn_emission.log_prob(emiss_centered)) * self.seqweightin), num_el * 3.)
 
-        self.z_smooth = z_smooth
-        self.num_el = num_el
-        self.num_el2 = num_el2
-        self.error_loss_Q = tf.truediv(tf.reduce_sum(tf.negative(log_prob_transition)), (num_el * 3.))
-        # self.error_loss_Q = tf.cast(tf.reduce_sum(0.0), self.vdtype)
+            self.z_smooth = z_smooth
+            self.num_el = num_el
+            self.num_el2 = num_el2
+            self.error_loss_Q = tf.truediv(tf.reduce_sum(tf.negative(log_prob_transition)), (num_el * 3.))
+            # self.error_loss_Q = tf.cast(tf.reduce_sum(0.0), self.vdtype)
 
     def build_model(self, is_training):
 
         with tf.variable_scope('Input_Placeholders'):
 
+            self.drop_rate = tf.Variable(0.5, trainable=False, dtype=tf.float64, name='dropout_rate')
+            self.learning_rate_inp = tf.Variable(0.0, trainable=False, dtype=tf.float64, name='learning_rate_input')
             self.update_condition = tf.placeholder(tf.bool, name='update_condition')
 
             self.grad_clip = tf.placeholder(self.vdtype, name='grad_clip')
@@ -845,7 +882,7 @@ class Filter(object):
             self.R_inp = tf.placeholder(self.vdtype, shape=(None, self.num_meas, self.num_meas), name="r_inp")
             self.state_input = tf.placeholder(self.vdtype, shape=(None, self.num_state), name="state_input")
             self.truth_state = [tf.placeholder(self.vdtype, shape=(None, self.num_state), name="y_truth_{}".format(t)) for t in range(self.max_seq)]
-            self.seqweightin = tf.placeholder(self.vdtype, [None, self.max_seq])
+            self.seqweightin = tf.placeholder(self.vdtype, [None, self.max_seq], name='seqweight')
 
             self.init_c_fwf = tf.placeholder(name='init_c_fwf', shape=[None, self.F_hidden], dtype=self.vdtype)
             self.init_h_fwf = tf.placeholder(name='init_h_fwf', shape=[None, self.F_hidden], dtype=self.vdtype)
@@ -954,78 +991,83 @@ class Filter(object):
 
         self.get_elbo(filter_out)
 
-        total_weight = tf.cast(self.seqweightin, self.vdtype)
-        tot = tf.cast(self.max_seq, self.vdtype)
-        loss_func = weighted_mape_tf
+        with tf.variable_scope('regression_loss'):
+            total_weight = tf.cast(self.seqweightin, self.vdtype)
+            tot = tf.cast(self.max_seq, self.vdtype)
+            loss_func = weighted_mape_tf
 
-        # Measurement Error
-        pos1m_err = loss_func(_y[:, :, 0], self.new_meas[:, :, 0], total_weight, tot)
-        pos2m_err = loss_func(_y[:, :, 4], self.new_meas[:, :, 1], total_weight, tot)
-        pos3m_err = loss_func(_y[:, :, 8], self.new_meas[:, :, 2], total_weight, tot)
+            # Measurement Error
+            pos1m_err = loss_func(_y[:, :, 0], self.new_meas[:, :, 0], total_weight, tot, name='merr1')
+            pos2m_err = loss_func(_y[:, :, 4], self.new_meas[:, :, 1], total_weight, tot, name='merr1')
+            pos3m_err = loss_func(_y[:, :, 8], self.new_meas[:, :, 2], total_weight, tot, name='merr1')
 
-        # State Error
-        pos1e_err = loss_func(_y[:, :, 0], self.z_smooth[:, :, 0], total_weight, tot)
-        pos2e_err = loss_func(_y[:, :, 4], self.z_smooth[:, :, 4], total_weight, tot)
-        pos3e_err = loss_func(_y[:, :, 8], self.z_smooth[:, :, 8], total_weight, tot)
+            # State Error
+            pos1e_err = loss_func(_y[:, :, 0], self.z_smooth[:, :, 0], total_weight, tot, name='serr1')
+            pos2e_err = loss_func(_y[:, :, 4], self.z_smooth[:, :, 4], total_weight, tot, name='serr1')
+            pos3e_err = loss_func(_y[:, :, 8], self.z_smooth[:, :, 8], total_weight, tot, name='serr1')
 
-        e1 = (pos1e_err / pos1m_err)
-        e2 = (pos2e_err / pos2m_err)
-        e3 = (pos3e_err / pos3m_err)
-        self.meas_error = e1 + e2 + e3
+            total_err_state = pos1e_err + pos2e_err + pos3e_err
+            total_err_meas = pos1m_err + pos2m_err + pos3m_err
 
-        # state_loss_pos100 = tf.where(pos1e_err > pos1m_err, 10000*tf.ones_like(pos1e_err), pos1e_err)
-        # state_loss_pos200 = tf.where(pos2e_err > pos2m_err, 10000*tf.ones_like(pos1e_err), pos2e_err)
-        # state_loss_pos300 = tf.where(pos3e_err > pos3m_err, 10000*tf.ones_like(pos1e_err), pos3e_err)
+            e1 = (pos1e_err / pos1m_err)
+            e2 = (pos2e_err / pos2m_err)
+            e3 = (pos3e_err / pos3m_err)
+            self.meas_error = total_err_state / total_err_meas
 
-        state_loss_pos100 = loss_func(_y[:, :, 0], self.z_smooth[:, :, 0], total_weight, tot)
-        state_loss_pos200 = loss_func(_y[:, :, 4], self.z_smooth[:, :, 4], total_weight, tot)
-        state_loss_pos300 = loss_func(_y[:, :, 8], self.z_smooth[:, :, 8], total_weight, tot)
-        state_loss_vel100 = loss_func(_y[:, :, 1], self.z_smooth[:, :, 1], total_weight, tot)
-        state_loss_vel200 = loss_func(_y[:, :, 5], self.z_smooth[:, :, 5], total_weight, tot)
-        state_loss_vel300 = loss_func(_y[:, :, 9], self.z_smooth[:, :, 9], total_weight, tot)
-        state_loss_acc100 = loss_func(_y[:, :, 2], self.z_smooth[:, :, 2], total_weight, tot)
-        state_loss_acc200 = loss_func(_y[:, :, 6], self.z_smooth[:, :, 6], total_weight, tot)
-        state_loss_acc300 = loss_func(_y[:, :, 10], self.z_smooth[:, :, 10], total_weight, tot)
-        state_loss_jer100 = loss_func(_y[:, :, 3], self.z_smooth[:, :, 3], total_weight, tot)
-        state_loss_jer200 = loss_func(_y[:, :, 7], self.z_smooth[:, :, 7], total_weight, tot)
-        state_loss_jer300 = loss_func(_y[:, :, 11], self.z_smooth[:, :, 11], total_weight, tot)
+            # state_loss_pos100 = tf.where(pos1e_err > pos1m_err, 10000*tf.ones_like(pos1e_err), pos1e_err)
+            # state_loss_pos200 = tf.where(pos2e_err > pos2m_err, 10000*tf.ones_like(pos1e_err), pos2e_err)
+            # state_loss_pos300 = tf.where(pos3e_err > pos3m_err, 10000*tf.ones_like(pos1e_err), pos3e_err)
 
-        self.SLPf1 = state_loss_pos100 + state_loss_pos200 + state_loss_pos300
-        self.SLVf1 = state_loss_vel100 + state_loss_vel200 + state_loss_vel300
-        self.SLAf1 = state_loss_acc100 + state_loss_acc200 + state_loss_acc300
-        self.SLJf1 = state_loss_jer100 + state_loss_jer200 + state_loss_jer300
+            state_loss_pos100 = loss_func(_y[:, :, 0], self.z_smooth[:, :, 0], total_weight, tot, name='pos1_err')
+            state_loss_pos200 = loss_func(_y[:, :, 4], self.z_smooth[:, :, 4], total_weight, tot, name='pos2_err')
+            state_loss_pos300 = loss_func(_y[:, :, 8], self.z_smooth[:, :, 8], total_weight, tot, name='pos3_err')
+            state_loss_vel100 = loss_func(_y[:, :, 1], self.z_smooth[:, :, 1], total_weight, tot, name='vel1_err')
+            state_loss_vel200 = loss_func(_y[:, :, 5], self.z_smooth[:, :, 5], total_weight, tot, name='vel2_err')
+            state_loss_vel300 = loss_func(_y[:, :, 9], self.z_smooth[:, :, 9], total_weight, tot, name='vel3_err')
+            state_loss_acc100 = loss_func(_y[:, :, 2], self.z_smooth[:, :, 2], total_weight, tot, name='acc1_err')
+            state_loss_acc200 = loss_func(_y[:, :, 6], self.z_smooth[:, :, 6], total_weight, tot, name='acc2_err')
+            state_loss_acc300 = loss_func(_y[:, :, 10], self.z_smooth[:, :, 10], total_weight, tot, name='acc3_err')
+            state_loss_jer100 = loss_func(_y[:, :, 3], self.z_smooth[:, :, 3], total_weight, tot, name='jer1_err')
+            state_loss_jer200 = loss_func(_y[:, :, 7], self.z_smooth[:, :, 7], total_weight, tot, name='jer2_err')
+            state_loss_jer300 = loss_func(_y[:, :, 11], self.z_smooth[:, :, 11], total_weight, tot, name='jer3_err')
 
-        # self.SLPf1 = tf.truediv(self.SLPf1, tf.cast(tf.reduce_sum(self.batch_size), self.vdtype))
-        # self.SLVf1 = tf.truediv(self.SLVf1, tf.cast(tf.reduce_sum(self.batch_size), self.vdtype))
-        # self.SLAf1 = tf.truediv(self.SLAf1, tf.cast(tf.reduce_sum(self.batch_size), self.vdtype))
-        # self.SLJf1 = tf.truediv(self.SLJf1, tf.cast(tf.reduce_sum(self.batch_size), self.vdtype))
+            self.SLPf1 = state_loss_pos100 + state_loss_pos200 + state_loss_pos300
+            self.SLVf1 = state_loss_vel100 + state_loss_vel200 + state_loss_vel300
+            self.SLAf1 = state_loss_acc100 + state_loss_acc200 + state_loss_acc300
+            self.SLJf1 = state_loss_jer100 + state_loss_jer200 + state_loss_jer300
 
-        self.SLPf1 = tf.truediv(self.SLPf1, self.num_el)
-        self.SLVf1 = tf.truediv(self.SLVf1, self.num_el)
-        self.SLAf1 = tf.truediv(self.SLAf1, self.num_el)
-        self.SLJf1 = tf.truediv(self.SLJf1, self.num_el)
+            # self.SLPf1 = tf.truediv(self.SLPf1, tf.cast(tf.reduce_sum(self.batch_size), self.vdtype))
+            # self.SLVf1 = tf.truediv(self.SLVf1, tf.cast(tf.reduce_sum(self.batch_size), self.vdtype))
+            # self.SLAf1 = tf.truediv(self.SLAf1, tf.cast(tf.reduce_sum(self.batch_size), self.vdtype))
+            # self.SLJf1 = tf.truediv(self.SLJf1, tf.cast(tf.reduce_sum(self.batch_size), self.vdtype))
 
-        self.rmse_pos = self.SLPf1
-        self.rmse_vel = self.SLVf1
-        self.rmse_acc = self.SLAf1
-        self.rmse_jer = self.SLJf1
+            self.SLPf1 = tf.truediv(self.SLPf1, self.num_el)
+            self.SLVf1 = tf.truediv(self.SLVf1, self.num_el)
+            self.SLAf1 = tf.truediv(self.SLAf1, self.num_el)
+            self.SLJf1 = tf.truediv(self.SLJf1, self.num_el)
 
-        self.maha_out = tf.truediv(tf.reduce_sum(self.MDP * self.seqweightin[:, :, tf.newaxis]), self.num_el)
+            self.rmse_pos = self.SLPf1
+            self.rmse_vel = self.SLVf1
+            self.rmse_acc = self.SLAf1
+            self.rmse_jer = self.SLJf1
 
-        self.learning_rate = tf.train.exponential_decay(self.learning_rate_inp, global_step=self.global_step, decay_steps=self.decay_steps, decay_rate=0.95, staircase=True)
+            self.maha_out = tf.truediv(tf.reduce_sum(self.MDP * self.seqweightin[:, :, tf.newaxis]), self.num_el)
 
-        all_vars = tf.trainable_variables()
+        with tf.variable_scope('learning_rate'):
+            self.learning_rate = tf.train.exponential_decay(self.learning_rate_inp, global_step=self.global_step, decay_steps=self.decay_steps, decay_rate=0.9, staircase=True)
+
 
         with tf.variable_scope("TrainOps"):
-            print('cov_update gradients...')
-
+            print('Updating Gradients')
+            all_vars = tf.trainable_variables()
             # tfc.opt.MomentumWOptimizer(learning_rate=self.learning_rate, momentum=0.9, weight_decay=1e-10, name='r3')
             # tfc.opt.AdamWOptimizer(weight_decay=1e-7, learning_rate=self.learning_rate, name='opt')
 
-            optq = tfc.opt.MultitaskOptimizerWrapper(tfc.opt.AdamWOptimizer(weight_decay=1e-5, learning_rate=self.learning_rate, name='opt'))
-            lower_bound = self.rl * 1 + self.entropy * 1 + self.maha_loss * 0 + self.error_loss_initial * 1 + self.meas_error * 1 + self.error_loss_Q * 0 + self.rmse_pos * 1 + self.error_loss_pos
+            # optq = tfc.opt.MultitaskOptimizerWrapper(tfc.opt.AdamWOptimizer(weight_decay=1e-10, learning_rate=self.learning_rate, name='opt'))
+            optq = tfc.opt.MomentumWOptimizer(learning_rate=self.learning_rate, momentum=0.95, weight_decay=1e-10, name='opt')
+            lower_bound = (self.rl * 1 + self.entropy * 1 + self.maha_loss * 0 + self.error_loss_full + self.error_loss_Q * 0 + self.rmse_pos * 1 + self.error_loss_pos * 0 + self.meas_error)
             gradvarsq = optq.compute_gradients(lower_bound, all_vars, colocate_gradients_with_ops=False)
-            gradvarsq, _ = tfc.opt.clip_gradients_by_global_norm(gradvarsq, 1.)
+            gradvarsq, _ = tfc.opt.clip_gradients_by_global_norm(gradvarsq, 5.)
             self.train_q = optq.apply_gradients(gradvarsq, global_step=self.global_step)
 
         total_parameters = 0
@@ -1314,10 +1356,11 @@ class Filter(object):
                     fd.update({self.state_input: current_state_estimate.reshape(-1, self.num_state)})
                     fd.update({self.prev_time: prev_time[:, :, 0]})
                     fd.update({self.current_timei[t]: current_time[:, t, :].reshape(-1, 1) for t in range(self.max_seq)})
-                    fd.update({self.drop_rate: 0.5})
+                    fd.update({self.drop_rate: 0.8})
 
                     lr = 1e-3
                     randn = random.random()
+                    # randn = 0.
                     if epoch < 1 and minibatch_index < 25:
                         if randn > 0.1:
                             stateful = False
@@ -1335,43 +1378,49 @@ class Filter(object):
 
                     t00 = time.time()
 
-                    filter_output, smooth_output, q_out_t, q_out, _, rmsp, rmsv, rmsa, rmsj, LR, \
-                    cov_pos_loss, cov_vel_loss, kalman_cov_loss, maha_loss, MD, trace_loss, rl, \
-                    entropy, qt_out, rt_out, at_out, q_loss, state_fwf, state_fwf2, state_fwf3, new_meas, \
-                    y_t_resh, Cz_t, MDP, mvn_inv, state_error, summary_str = \
-                        self.sess.run([self.final_state_filter,
-                                       self.final_state_smooth,
-                                       self.final_cov_filter,
-                                       self.final_cov_filter,
-                                       self.train_q,
-                                       self.rmse_pos,
-                                       self.rmse_vel,
-                                       self.rmse_acc,
-                                       self.rmse_jer,
-                                       self.learning_rate,
-                                       self.error_loss_pos,
-                                       self.error_loss_vel,
-                                       self.error_loss_full,
-                                       self.maha_loss,
-                                       self.maha_out,
-                                       self.trace_loss,
-                                       self.rl,
-                                       self.entropy,
-                                       self.qo_list,
-                                       self.ro_list,
-                                       self.ao_list,
-                                       self.error_loss_Q,
-                                       self.state_fwf,
-                                       self.state_fwf2,
-                                       self.state_fwf3,
-                                       self.new_meas,
-                                       self.y_t_resh,
-                                       self.Cz_t,
-                                       self.MDP,
-                                       self.mvn_inv,
-                                       self.state_error,
-                                       summary],
-                                      fd)
+                    if tstep == 0:
+                        ittt = 1
+                    else:
+                        ittt = 1
+
+                    for _ in range(ittt):
+                        filter_output, smooth_output, q_out_t, q_out, _, rmsp, rmsv, rmsa, rmsj, LR, \
+                        cov_pos_loss, cov_vel_loss, kalman_cov_loss, maha_loss, MD, trace_loss, rl, \
+                        entropy, qt_out, rt_out, at_out, q_loss, state_fwf, state_fwf2, state_fwf3, new_meas, \
+                        y_t_resh, Cz_t, MDP, mvn_inv, state_error, summary_str = \
+                            self.sess.run([self.final_state_filter,
+                                           self.final_state_smooth,
+                                           self.final_cov_filter,
+                                           self.final_cov_filter,
+                                           self.train_q,
+                                           self.rmse_pos,
+                                           self.rmse_vel,
+                                           self.rmse_acc,
+                                           self.rmse_jer,
+                                           self.learning_rate,
+                                           self.error_loss_pos,
+                                           self.error_loss_vel,
+                                           self.error_loss_full,
+                                           self.maha_loss,
+                                           self.maha_out,
+                                           self.trace_loss,
+                                           self.rl,
+                                           self.entropy,
+                                           self.qo_list,
+                                           self.ro_list,
+                                           self.ao_list,
+                                           self.error_loss_Q,
+                                           self.state_fwf,
+                                           self.state_fwf2,
+                                           self.state_fwf3,
+                                           self.new_meas,
+                                           self.y_t_resh,
+                                           self.Cz_t,
+                                           self.MDP,
+                                           self.mvn_inv,
+                                           self.state_error,
+                                           summary],
+                                          fd)
 
                     t01 = time.time()
                     sess_run_time = t01 - t00

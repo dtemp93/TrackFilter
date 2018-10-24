@@ -5,7 +5,7 @@ os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_integer('batch_size', '32', """batch size""")
+tf.app.flags.DEFINE_integer('batch_size', '64', """batch size""")
 tf.app.flags.DEFINE_integer('max_seq', '100', """number of measurements included""")
 tf.app.flags.DEFINE_integer('max_seq_len', '2750', """number of measurements included""")
 tf.app.flags.DEFINE_integer('eval_interval', '10', """number of measurements included""")
@@ -16,7 +16,7 @@ tf.app.flags.DEFINE_integer('num_mixtures', '5', """Measurement Dimension""")
 tf.app.flags.DEFINE_float('max_epoch', 100, """Maximum Dataset Epochs""")
 tf.app.flags.DEFINE_float('RE', 6378137, """Radius of Earth""")
 tf.app.flags.DEFINE_float('GM', 398600441890000, """GM""")
-tf.app.flags.DEFINE_integer('F_hidden', '8', """RNN Hidden Units""")
+tf.app.flags.DEFINE_integer('F_hidden', '32', """RNN Hidden Units""")
 tf.app.flags.DEFINE_integer('default_data_rate', '25', """Default Data Rate in HZ""")
 
 
@@ -57,7 +57,7 @@ def main():
             filter_train = Filter(sess, trainable_state=False, state_type='PLSTM', mode='training',
                                   data_dir=data_dir, filter_name=filter_name, save_dir=save_dir,
                                   F_hidden=FLAGS.F_hidden, num_state=FLAGS.num_state, num_meas=FLAGS.num_meas,
-                                  max_seq=FLAGS.max_seq, num_mixtures=FLAGS.num_mixtures, batch_size=FLAGS.batch_size, constant=True)
+                                  max_seq=FLAGS.max_seq, num_mixtures=FLAGS.num_mixtures, batch_size=FLAGS.batch_size, constant=False)
 
             print('Building filter')
             t0 = time.time()

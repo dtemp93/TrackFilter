@@ -3,6 +3,7 @@ import os
 from natsort import index_natsorted, order_by_index, natsorted
 import numpy as np
 import h5py
+import random
 
 def ismember(a, b):
     bind = {}
@@ -184,6 +185,8 @@ class DataServerPrePro:
         for i, npy in enumerate(os.listdir(self.file_dir_train)):
             self.file_dir_train_list.append(self.file_dir_train + npy)
 
+        random.shuffle(self.file_dir_train_list)
+
         for i, npy in enumerate(os.listdir(self.file_dir_test)):
             self.file_dir_test_list.append(self.file_dir_test + npy)
 
@@ -204,6 +207,7 @@ class DataServerPrePro:
             if self._index_in_epoch_train >= self.num_examples_train:
                 self._count_train = 0
                 self._index_in_epoch_train = -1
+                random.shuffle(self.file_dir_train_list)
 
             data_file = self.file_dir_train_list[self._index_in_epoch_train]
 
