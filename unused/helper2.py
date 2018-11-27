@@ -10,6 +10,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 import numpy as np
 
+
 def safe_div(numerator, denominator, name):
   return array_ops.where(
       math_ops.greater(denominator, 0),
@@ -41,6 +42,7 @@ def sinca(x, name=None):
     with ops.name_scope(name, 'sinc', [x]) as name:
         x = sinc(x) + x
     return x
+
 
 def prepare_batch(minibatch_index, X, Y, S, seq_len, batch_size, new_batch):
     if new_batch is True:
@@ -103,12 +105,13 @@ def prepare_batch(minibatch_index, X, Y, S, seq_len, batch_size, new_batch):
             imeas = 3
             meas00 = copy.copy(xf[:, :imeas, 1:])
             state00 = copy.copy(yf[:, :imeas, :])
-            time00 = np.expand_dims(copy.copy(xf[:, :imeas, 0]), axis=2)
+            time00 = copy.copy(xf[:, :imeas, 0, np.newaxis])
 
-            initial_state = copy.copy(yf[:, imeas:1 + imeas, :])
-            initial_meas = copy.copy(xf[:, imeas:1 + imeas, 1:])
-            initial_time = np.expand_dims(copy.copy(xf[:, imeas:1 + imeas, 0]), axis=2)
-            initial_meta = np.expand_dims(copy.copy(sf[:, imeas:1 + imeas, 0]), axis=2)
+            prev_state = copy.copy(state00[:, -1, np.newaxis, :])
+            prev_meas = copy.copy(meas00[:, -1, np.newaxis, :])
+            prev_time = copy.copy(time00[:, -1, np.newaxis, 0, np.newaxis])
+            prev_meta = copy.copy(sf[:, -1, np.newaxis, 0, np.newaxis])
+
             x = copy.copy(xf[:, 1 + imeas:, :])
             y = copy.copy(yf[:, 1 + imeas:, :])
             s = copy.copy(sf[:, 1 + imeas:, :])
@@ -116,10 +119,10 @@ def prepare_batch(minibatch_index, X, Y, S, seq_len, batch_size, new_batch):
             XL.append(x)
             YL.append(y)
             SL.append(s)
-            PS.append(initial_state)
-            PM.append(initial_meas)
-            PT.append(initial_time)
-            PMeta.append(initial_meta)
+            PS.append(prev_state)
+            PM.append(prev_meas)
+            PT.append(prev_time)
+            PMeta.append(prev_meta)
             IM.append(meas00)
             IS.append(state00)
             IT.append(time00)
@@ -1489,3 +1492,23 @@ def permute_xyz_dims(x_data, y_data):
     y_data[:, :, 9 + perm[2], np.newaxis] = y12
 
     return x_data, y_data
+
+
+def loss_normalize(loss, update_condition, epsilon=1e-10):
+    # Variable used for storing the scalar-value of the loss-function.
+    loss_value = tf.Variable(1.0)
+
+    # Expression used for either updating the scalar-value or
+    # just re-using the old value.
+    # Note that when loss_value.assign(loss) is evaluated, it
+    # first evaluates the loss-function which is a TensorFlow
+    # expression, and then assigns the resulting scalar-value to
+    # the loss_value variable.
+    loss_value_updated = tf.cond(update_condition,
+                                 lambda: loss_value.assign(loss),
+                                 lambda: loss_value)
+
+    # Expression for the normalized loss-function.
+    loss_normalized = loss / (loss_value_updated + epsilon)
+
+    return loss_normalized

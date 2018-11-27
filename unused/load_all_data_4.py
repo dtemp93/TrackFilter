@@ -4,6 +4,8 @@ from natsort import index_natsorted, order_by_index, natsorted
 import numpy as np
 import h5py
 import random
+import copy
+
 
 def ismember(a, b):
     bind = {}
@@ -242,6 +244,11 @@ class DataServerPrePro:
         # ecef_ref = ecef_ref[shuf]
         # lla_data = lla_data[shuf]
 
+        x_data = x_data[:, :2000, :]
+        y_data = y_data[:, :2000, :]
+        ecef_ref = ecef_ref[:, :2000, :]
+        lla_data = lla_data[:, :2000, :]
+
         if x_data.shape[1] > batch_size:
             x_data = x_data[:batch_size, :, :]
             y_data = y_data[:batch_size, :, :]
@@ -300,7 +307,7 @@ class DataServerLive:
         self.meas_list_train = self.meas_list0[:self.num_train]
         self.meas_list_test = self.meas_list0[self.num_train:]
 
-        self._num_examples_train = len(self.meas_list_train)
+        self.num_examples_train = len(self.meas_list_train)
 
         state_header = str.split(self.state_list0[0], '/')[-1]
         state_header = str.split(state_header, '_')
@@ -313,7 +320,7 @@ class DataServerLive:
         max_seq_len = max_seq_len
         HZ = 1/HZ
 
-        self._total_batches = self._num_examples_train // batch_size
+        self._total_batches = self.num_examples_train // batch_size
 
         # lla_list = list()
         # traj_list = list()
@@ -326,7 +333,7 @@ class DataServerLive:
 
         start = self._index_in_epoch
         self._count += 1
-        if (self._index_in_epoch + batch_size) > self._num_examples_train:
+        if (self._index_in_epoch + batch_size) > self.num_examples_train:
             # seed = np.random.randint(100000)
             # np.random.seed(seed)
             # np.random.shuffle(self._meas)
@@ -353,7 +360,10 @@ class DataServerLive:
         traj_num = [None] * len(meas_paths)
 
         for i, npy0 in enumerate(meas_paths):
-            npy = str.split(npy0, '/')[5]
+            npy = str.split(npy0, '/')
+            vidx0 = ['Location' in t for t in npy]
+            vidx = vidx0.index(True)
+            npy = npy[vidx]
             npy = npy.replace("Location", "")
             npy = npy.replace("[", "")
             npy = npy.replace("]", "")
@@ -384,7 +394,10 @@ class DataServerLive:
             cur_traj = traj_num[i]
             cur_lla = lla_list[i]
 
-            npy = str.split(path, '/')[5]
+            npy = str.split(path, '/')
+            vidx0 = ['Location' in t for t in npy]
+            vidx = vidx0.index(True)
+            npy = npy[vidx]
             npy = npy.replace("Location", "")
             npy = npy.replace("[", "")
             npy = npy.replace("]", "")

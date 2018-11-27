@@ -10,6 +10,7 @@ from tensorflow.python.ops import rnn_cell_impl
 _state_size_with_prefix = rnn_cell_impl._zero_state_tensors
 import os
 
+
 def attention(batch_size, max_seq, n_hidden, out, series_k, scope=None):
 
     with tf.variable_scope('encoder') as scope:
@@ -408,9 +409,9 @@ def tril_with_diag_softplus_and_shift(x, diag_shift=1e-5, diag_mult=None, name=N
     x = tf.convert_to_tensor(x, name='x'+name)
     x = tfd.fill_triangular(x, name)
     diag = softplus_and_shift(tf.matrix_diag_part(x), diag_shift, diag_mult, name)
-    # x2 = tf.tanh(x)
-    # x2 = x * tf.cast(tf.sqrt(1e-12), tf.float64)
-    x3 = tf.matrix_set_diag(x, diag, name)
+    x2 = tf.tanh(x) * 0.99
+    x2 = x2 * tf.cast(tf.sqrt(1e-12), tf.float64)
+    x3 = tf.matrix_set_diag(x2, diag, name)
     return x3
 
 
@@ -550,7 +551,6 @@ def normalize_statenp(meas0, state0):
 
 def get_QP(dt, om, zm, I_3z, I_4z, zb, dimension=3, sjix=50e-6, sjiy=50e-6, sjiz=50e-6, aji=0.1):
 
-    # I_3z = tf.zeros([I_4z.shape[0].value(), 3, 3])
     dt = dt[:, tf.newaxis, :]
 
     dt7 = dt ** 7
@@ -560,7 +560,6 @@ def get_QP(dt, om, zm, I_3z, I_4z, zb, dimension=3, sjix=50e-6, sjiy=50e-6, sjiz
     dt3 = dt ** 3
     dt2 = dt ** 2
 
-    # aji = tf.ones_like(sji[:, tf.newaxis]) * aji
     aj = aji[:, :, tf.newaxis]
 
     aj7 = tf.pow(aj, 7)
@@ -591,11 +590,6 @@ def get_QP(dt, om, zm, I_3z, I_4z, zb, dimension=3, sjix=50e-6, sjiy=50e-6, sjiz
     q33j = ((1 / (2 * aj3)) * (4 * emadt + (2 * aj * dt) - (tf.exp(-2 * aj * dt)) - 3))
     q44j = ((1 / (2 * aj)) * (1 - tf.exp(-2 * aj * dt)))
 
-    # q11j = tf.where(q11j <= 0, tf.ones_like(q11j) * 1e-44, q11j)
-    # q22j = tf.where(q22j <= 0, tf.ones_like(q11j) * 1e-44, q22j)
-    # q33j = tf.where(q33j <= 0, tf.ones_like(q11j) * 1e-44, q33j)
-    # q44j = tf.where(q44j <= 0, tf.ones_like(q11j) * 1e-44, q44j)
-
     q12j = (1 / (2 * aj6)) * (1 - (2 * aj * dt) + (2 * aj2 * dt2) - (aj3 * dt3) + ((aj4 * dt4) / 4)
                               + tf.exp(-2 * aj * dt) + (2 * aj * dt * emadt) - (2 * emadt) - (aj2 * dt2 * emadt))
     q13j = (1 / (2 * aj5)) * (((aj3 * dt3) / 3) + (2 * aj * dt) - (aj2 * dt2) - 3
@@ -616,8 +610,6 @@ def get_QP(dt, om, zm, I_3z, I_4z, zb, dimension=3, sjix=50e-6, sjiy=50e-6, sjiz
     sj1 = 2 * tf.cast(sjix[:, :, tf.newaxis], dtype=tf.float64) * aj
     sj2 = 2 * tf.cast(sjiy[:, :, tf.newaxis], dtype=tf.float64) * aj
     sj3 = 2 * tf.cast(sjiz[:, :, tf.newaxis], dtype=tf.float64) * aj
-
-    # # C = GMt1 * ((3 * (tf.matmul(pstate_est[:, :3, tf.newaxis], pstate_est[:, :3, tf.newaxis], transpose_b=True)) / rad_temp2) - I_3)#
 
     if dimension == 4:
 
@@ -663,8 +655,6 @@ def get_QP(dt, om, zm, I_3z, I_4z, zb, dimension=3, sjix=50e-6, sjiy=50e-6, sjiz
         phi = tf.concat([tf.concat([om, dt, q34], axis=2), tf.concat([zm, om, dt], axis=2), tf.concat([zm, zm, dt], axis=2)], axis=1)
         A = tf.concat([tf.concat([phi, I_3z, I_3z], axis=2), tf.concat([I_3z, phi, I_3z], axis=2), tf.concat([I_3z, I_3z, phi], axis=2)], axis=1)
         B = A
-
-    # Q = (Q + tf.transpose(Q, [0, 2, 1])) / 2
 
     return Q, A, B, A
 
@@ -1016,6 +1006,7 @@ def discriminator_loss(real, fake):
     loss = real_loss + fake_loss
 
     return loss
+
 
 def check_folder(log_dir):
     if not os.path.exists(log_dir):
